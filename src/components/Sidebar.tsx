@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, BarChart2, Settings, Megaphone, Package, ShoppingBag, LogOut, Users, Wallet, MessageSquare, Lock, Eye, EyeOff, Crown } from 'lucide-react';
+import { Calendar, LogOut, Lock, Eye, EyeOff } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface SidebarProps {

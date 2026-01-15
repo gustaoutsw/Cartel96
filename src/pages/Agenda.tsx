@@ -2,13 +2,12 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, addDays, startOfWeek, isSameDay, parseISO, isSameMonth, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, CheckCircle2, Scissors as ScissorsIcon, Trash2, Plus, MessageCircle, Clock, X, CalendarClock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Scissors as ScissorsIcon, Trash2, Plus, MessageCircle, Clock, CalendarClock, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 import Sidebar from '../components/Sidebar';
 import { useAuth } from '../contexts/AuthContext';
-import { BARBERS } from '../constants/barbers';
 
 // NOVA TABELA DE PREÇOS - CARTEL 96
 const SERVICES = [
@@ -25,6 +24,7 @@ interface Appointment {
     id: any;
     cliente_nome: string;
     cliente_telefone?: string;
+    servico_id?: any;
     servico_nome: string;
     data_horario: string;
     barbeiro_id: any;
