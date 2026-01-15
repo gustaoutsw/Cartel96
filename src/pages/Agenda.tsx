@@ -443,7 +443,7 @@ export default function Agenda() {
 
     return (
         <div className="h-screen bg-black text-white flex overflow-hidden">
-            <Sidebar perfil={{ nome: 'DEMO USER', cargo: 'barbeiro' }} onLogout={() => { }} />
+            <Sidebar perfil={{ nome: 'DEMO USER', cargo: 'barbeiro' }} />
 
             <main className={`flex-1 flex flex-col h-full relative overflow-hidden transition-opacity duration-200 ${isSaving ? 'opacity-50 pointer-events-none cursor-wait' : ''}`}>
 
