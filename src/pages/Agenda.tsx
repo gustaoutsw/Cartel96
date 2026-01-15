@@ -418,10 +418,10 @@ export default function Agenda() {
             let result;
             if (formData.id) {
                 // UPDATE
-                result = await supabase.from('agendamentos').update(payload).eq('id', formData.id).select().single();
+                result = await supabase.from('agendamentos').update(payload).eq('id', formData.id).select();
             } else {
                 // INSERT
-                result = await supabase.from('agendamentos').insert(payload).select().single();
+                result = await supabase.from('agendamentos').insert(payload).select();
             }
 
             const { error } = result;
