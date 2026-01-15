@@ -40,13 +40,13 @@ export default function MainLayout({ children }: MainLayoutProps) {
     };
 
     return (
-        <div className="flex min-h-screen bg-zinc-950 text-white font-sans selection:bg-[#d4af37]/30">
+        <div className="flex min-h-screen bg-black text-white font-sans selection:bg-[#d4af37]/30">
             <Sidebar
                 perfil={sidebarProfile}
                 onLogout={handleLogout}
             />
             <main className="flex-1 transition-all duration-300 md:pl-20 w-full flex flex-col">
-                <div className="flex-1 w-full max-w-[1600px] mx-auto px-0 md:p-8 pb-24 md:pb-8">
+                <div className="flex-1 w-full max-w-[1600px] mx-auto px-0 md:p-8 pb-0 md:pb-8">
                     {children}
                 </div>
             </main>

@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 import { format, addDays, startOfWeek, isSameDay, parseISO, isSameMonth, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Scissors as ScissorsIcon, Trash2, MessageCircle, Clock, CalendarClock, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Scissors as ScissorsIcon, Clock, X, Trash2, LogOut, MessageCircle, CalendarClock, Check, Filter } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { motion } from 'framer-motion';
 
-import Sidebar from '../components/Sidebar';
+
 import { useAuth } from '../contexts/AuthContext';
 
 // NOVA TABELA DE PREÇOS - CARTEL 96
@@ -87,6 +88,9 @@ const TimeSlot = React.memo(({
                     </div>
                 </div>
             )}
+
+
+
         </div>
     );
 });
@@ -96,13 +100,15 @@ const AppointmentCard = React.memo(({
     onClick,
     onDragStart,
     className,
-    showBarber
+    showBarber,
+    compact // New Prop
 }: {
     appt: Appointment;
     onClick: (e: React.MouseEvent) => void;
     onDragStart: (e: React.DragEvent, id: any) => void;
-    className?: string; // Custom class support
+    className?: string;
     showBarber?: boolean;
+    compact?: boolean;
 }) => {
     return (
         <motion.div
@@ -116,15 +122,15 @@ const AppointmentCard = React.memo(({
             whileHover={{ scale: 1.02, zIndex: 20 }}
             whileDrag={{ opacity: 0.5, scale: 0.95 }}
         >
-            <div className={`h-full w-full rounded-2xl p-4 flex flex-col justify-center border shadow-xl backdrop-blur-md transition-all ${appt.status === 'atendimento' ? 'bg-[#d4af37] text-black border-[#d4af37]' : 'bg-zinc-950 text-stone-200 border-zinc-800 shadow-[0_4px_20px_rgba(0,0,0,0.5)]'}`}>
+            <div className={`h-full w-full rounded-2xl ${compact ? 'p-2' : 'p-5 md:p-4'} flex flex-col justify-center border shadow-xl backdrop-blur-md transition-all ${appt.status === 'atendimento' ? 'bg-[#d4af37] text-black border-[#d4af37]' : 'bg-zinc-950 text-stone-200 border-zinc-800 shadow-[0_4px_20px_rgba(0,0,0,0.5)]'}`}>
                 <div className="flex justify-between items-start">
-                    <div className="text-sm font-black uppercase truncate tracking-tight">{appt.cliente_nome}</div>
+                    <div className={`${compact ? 'text-[10px]' : 'text-base md:text-sm'} font-black uppercase truncate tracking-tight`}>{appt.cliente_nome}</div>
                     {appt.status === 'agendado' && <div className="w-2 h-2 rounded-full bg-[#d4af37] animate-pulse" />}
                 </div>
-                <div className="text-[10px] opacity-60 font-bold uppercase flex items-center gap-2 mt-1">
-                    <ScissorsIcon size={12} /> {appt.servico_nome}
+                <div className={`${compact ? 'text-[9px]' : 'text-[10px]'} opacity-60 font-bold uppercase flex items-center gap-2 mt-1`}>
+                    {!compact && <ScissorsIcon size={12} />} {appt.servico_nome}
                 </div>
-                {showBarber && appt.barbeiro_nome && (
+                {showBarber && appt.barbeiro_nome && !compact && (
                     <div className="mt-2 pt-2 border-t border-white/10 text-[9px] font-black uppercase tracking-wider opacity-80 text-[#d4af37]">
                         {appt.barbeiro_nome}
                     </div>
@@ -137,8 +143,10 @@ const AppointmentCard = React.memo(({
 // --- MAIN COMPONENT ---
 
 export default function Agenda() {
+    const navigate = useNavigate();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [appointments, setAppointments] = useState<Appointment[]>([]);
 
     const [activeManagement, setActiveManagement] = useState<Appointment | null>(null);
@@ -460,566 +468,667 @@ export default function Agenda() {
         return () => window.removeEventListener('open-new-appointment', handleNewAppointment);
     }, [handleFabClick]);
 
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        navigate('/login');
+    };
+
     return (
-        <div className="h-screen bg-black text-white flex overflow-hidden">
-            <Sidebar perfil={{ nome: 'DEMO USER', cargo: 'barbeiro' }} />
-
-            <main className={`flex-1 flex flex-col h-full relative overflow-hidden transition-opacity duration-200 ${isSaving ? 'opacity-50 pointer-events-none cursor-wait' : ''}`}>
+        <div className={`flex flex-col min-h-screen relative overflow-hidden transition-opacity duration-200 ${isSaving ? 'opacity-50 pointer-events-none cursor-wait' : ''}`}>
 
 
-                <header className="sticky top-0 px-3 md:px-8 py-2 md:py-6 flex items-center justify-between shrink-0 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 z-50">
-                    <div>
-                        <h1 className="text-lg md:text-2xl font-serif font-black text-white uppercase tracking-tighter flex items-center gap-3">
-                            CARTEL 96 <span className="hidden md:inline text-[#d4af37] opacity-60 text-xs font-sans tracking-[0.3em] font-normal border-l border-zinc-800 pl-3">GESTÃO</span>
-                        </h1>
+
+            <header className="sticky top-0 px-3 md:px-8 py-2 md:py-6 flex flex-col md:flex-row items-center md:justify-between gap-3 md:gap-0 shrink-0 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 z-50">
+                <div>
+                    <h1 className="text-lg md:text-2xl font-serif font-black text-white uppercase tracking-tighter flex items-center gap-3">
+                        CARTEL 96 <span className="hidden md:inline text-[#d4af37] opacity-60 text-xs font-sans tracking-[0.3em] font-normal border-l border-zinc-800 pl-3">GESTÃO</span>
+                    </h1>
+                </div>
+                <div className="flex gap-2 md:gap-4">
+                    <div className="flex bg-zinc-900/50 rounded-lg md:rounded-xl p-1 border border-zinc-800 items-center">
+                        <button onClick={handleLogout} className="md:hidden p-4 text-red-600 hover:text-red-500 transition-colors flex items-center justify-center border-r border-zinc-800 mr-1">
+                            <LogOut size={20} />
+                        </button>
+                        <button onClick={() => setCurrentDate(d => addDays(d, -1))} className="p-4 md:p-4 hover:text-white text-zinc-500 transition-colors bg-transparent"><ChevronLeft size={16} className="md:w-5 md:h-5" /></button>
+                        <button onClick={() => setCurrentDate(new Date())} className="px-6 md:px-6 py-4 md:py-3 text-sm md:text-xs font-black uppercase text-zinc-400 hover:text-[#d4af37] transition-colors tracking-widest">HOJE</button>
+                        <button onClick={() => setCurrentDate(d => addDays(d, 1))} className="p-4 md:p-4 hover:text-white text-zinc-500 transition-colors bg-transparent"><ChevronRight size={16} className="md:w-5 md:h-5" /></button>
                     </div>
-                    <div className="flex gap-2 md:gap-4">
-                        <div className="flex bg-zinc-900/50 rounded-lg md:rounded-xl p-1 border border-zinc-800 items-center">
-                            <button onClick={() => setCurrentDate(d => addDays(d, -1))} className="p-2 md:p-4 hover:text-white text-zinc-500 transition-colors bg-transparent"><ChevronLeft size={16} className="md:w-5 md:h-5" /></button>
-                            <button onClick={() => setCurrentDate(new Date())} className="px-3 md:px-6 py-1.5 md:py-3 text-[10px] md:text-xs font-black uppercase text-zinc-400 hover:text-[#d4af37] transition-colors tracking-widest">HOJE</button>
-                            <button onClick={() => setCurrentDate(d => addDays(d, 1))} className="p-2 md:p-4 hover:text-white text-zinc-500 transition-colors bg-transparent"><ChevronRight size={16} className="md:w-5 md:h-5" /></button>
+                    {/* BARBER FILTER - VISIBLE ONLY TO OWNER */}
+                    {(profile?.cargo === 'dono' || profile?.cargo === 'admin') && (
+                        <div className="hidden md:flex bg-zinc-900/50 rounded-xl p-1 border border-zinc-800 items-center px-2">
+                            <select
+                                value={selectedBarberId}
+                                onChange={(e) => setSelectedBarberId(e.target.value)}
+                                className="bg-transparent text-[10px] font-black uppercase text-zinc-400 focus:text-[#d4af37] outline-none cursor-pointer tracking-widest [&>option]:bg-zinc-900"
+                            >
+                                <option value="all">Todos Profissionais</option>
+                                {barbers.map(b => (
+                                    <option key={b.id} value={b.id}>{b.nome}</option>
+                                ))}
+                            </select>
                         </div>
-                        {/* BARBER FILTER - VISIBLE ONLY TO OWNER */}
-                        {(profile?.cargo === 'dono' || profile?.cargo === 'admin') && (
-                            <div className="hidden md:flex bg-zinc-900/50 rounded-xl p-1 border border-zinc-800 items-center px-2">
-                                <select
-                                    value={selectedBarberId}
-                                    onChange={(e) => setSelectedBarberId(e.target.value)}
-                                    className="bg-transparent text-[10px] font-black uppercase text-zinc-400 focus:text-[#d4af37] outline-none cursor-pointer tracking-widest [&>option]:bg-zinc-900"
-                                >
-                                    <option value="all">Todos Profissionais</option>
-                                    {barbers.map(b => (
-                                        <option key={b.id} value={b.id}>{b.nome}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-                        <div className="flex bg-zinc-900/50 rounded-lg md:rounded-xl p-1 border border-zinc-800">
-                            <button onClick={() => setViewMode('day')} className={`px-3 md:px-6 py-1.5 md:py-3 rounded-md md:rounded-lg text-[10px] md:text-xs font-black uppercase tracking-widest transition-all ${viewMode === 'day' ? 'bg-[#d4af37] text-black shadow-lg scale-105' : 'text-zinc-500 hover:bg-zinc-800'}`}>DIA</button>
-                            <button onClick={() => setViewMode('week')} className={`px-3 md:px-6 py-1.5 md:py-3 rounded-md md:rounded-lg text-[10px] md:text-xs font-black uppercase tracking-widest transition-all ${viewMode === 'week' ? 'bg-[#d4af37] text-black shadow-lg scale-105' : 'text-zinc-500 hover:bg-zinc-800'}`}>SEM</button>
-                            <button onClick={() => setViewMode('month')} className={`hidden md:block px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${viewMode === 'month' ? 'bg-[#d4af37] text-black shadow-lg scale-105' : 'text-zinc-500 hover:bg-zinc-800'}`}>MÊS</button>
-                        </div>
+                    )}
+                    <div className="flex bg-zinc-900/50 rounded-lg md:rounded-xl p-1 border border-zinc-800">
+                        <button onClick={() => setViewMode('day')} className={`h-14 md:h-auto px-4 md:px-6 py-0 md:py-3 rounded-md md:rounded-lg text-sm md:text-xs font-black uppercase tracking-widest transition-all hover:bg-[#d4af37]/20 ${viewMode === 'day' ? 'bg-[#d4af37] text-black shadow-lg scale-105 ring-2 ring-[#d4af37] ring-offset-2 ring-offset-black' : 'text-zinc-500 hover:text-white'}`}>DIA</button>
+                        <button onClick={() => setViewMode('week')} className={`h-14 md:h-auto px-4 md:px-6 py-0 md:py-3 rounded-md md:rounded-lg text-sm md:text-xs font-black uppercase tracking-widest transition-all hover:bg-[#d4af37]/20 ${viewMode === 'week' ? 'bg-[#d4af37] text-black shadow-lg scale-105 ring-2 ring-[#d4af37] ring-offset-2 ring-offset-black' : 'text-zinc-500 hover:text-white'}`}>SEM</button>
+                        <button onClick={() => setViewMode('month')} className={`hidden md:block px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all hover:bg-[#d4af37]/20 ${viewMode === 'month' ? 'bg-[#d4af37] text-black shadow-lg scale-105 ring-2 ring-[#d4af37] ring-offset-2 ring-offset-black' : 'text-zinc-500 hover:text-white'}`}>MÊS</button>
                     </div>
-                </header>
+                </div>
 
-                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar relative w-full min-h-[80vh] block visible">
-                    {(() => {
-                        switch (viewMode) {
-                            case 'day':
-                                return (
-                                    <div className="flex flex-col h-full overflow-y-auto scrollbar-hide pb-20">
-                                        <div className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 p-4 text-center">
+                {/* GLOBAL TEAM FILTER BUTTON */}
+                <div className="w-full md:w-auto mt-3 md:mt-0 flex justify-center">
+                    <button
+                        onClick={() => setIsFilterOpen(true)}
+                        className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 hover:border-[#d4af37] px-4 py-2 rounded-full transition-all active:scale-95 group"
+                    >
+                        <Filter size={16} className="text-zinc-500 group-hover:text-[#d4af37]" />
+                        <span className="text-xs text-zinc-300 font-bold uppercase tracking-wide">
+                            Exibindo: <span className="text-white">{selectedBarberId === 'all' ? 'Todos' : barbers.find(b => b.id === selectedBarberId)?.nome.split(' ')[0]}</span>
+                        </span>
+                        <ChevronRight size={14} className="text-zinc-600 rotate-90" />
+                    </button>
+                </div>
+            </header>
+
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar relative w-full min-h-[80vh] block visible">
+                {(() => {
+                    switch (viewMode) {
+                        case 'day':
+                            return (
+                                <div className="flex flex-col h-full overflow-y-auto scrollbar-hide pb-20">
+                                    <div className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 p-4 pb-2 text-center flex flex-col gap-4">
+                                        <div>
                                             <p className="text-[#d4af37] text-[10px] font-black uppercase tracking-[0.5em] mb-1">{format(currentDate, "EEEE", { locale: ptBR })}</p>
                                             <h2 className="text-4xl font-serif font-black text-white">{format(currentDate, "dd", { locale: ptBR })}</h2>
                                         </div>
-                                        <div className="flex-1">
-                                            {timeSlots.map(time => {
-                                                const slotAppts = appointments.filter(a =>
-                                                    isSameDay(parseISO(a.data_horario), currentDate) &&
-                                                    format(parseISO(a.data_horario), "HH:00") === time &&
-                                                    (selectedBarberId === 'all' || a.barbeiro_id === selectedBarberId)
-                                                );
-                                                return (
-                                                    <div key={time} className="grid grid-cols-[65px_1fr] md:grid-cols-[100px_1fr]">
-                                                        <div className="flex items-center justify-center border-r border-zinc-900 text-[11px] font-serif italic text-zinc-600">{time}</div>
-                                                        <TimeSlot
-                                                            time={time}
-                                                            date={currentDate}
-                                                            onClick={() => handleSlotClick(currentDate, time)}
-                                                            onDrop={processDrop}
-                                                        >
-                                                            {/* MULTI-TENANCY RENDER */}
-                                                            <div className="flex flex-row flex-wrap gap-2 p-2 w-full h-full pointer-events-none">
-                                                                {/* pointer-events-none on container so clicks pass to TimeSlot if empty space, but Card has pointer-events-auto */}
-                                                                {slotAppts.map(appt => (
-                                                                    <div key={appt.id} className="relative flex-1 min-w-[150px] h-[80px] pointer-events-auto">
-                                                                        <AppointmentCard
-                                                                            appt={appt}
-                                                                            onClick={(e) => { e.stopPropagation(); setActiveManagement(appt); }}
-                                                                            onDragStart={handleDragStart}
-                                                                            className="absolute inset-0" // Fill the wrapper
-                                                                            showBarber={selectedBarberId === 'all'}
-                                                                        />
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </TimeSlot>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
                                     </div>
-                                );
-                            case 'week':
-                                return (
-                                    <div key="week-view" className="flex-1 w-full min-h-[80vh] flex flex-col overflow-y-auto overflow-x-auto">
-                                        {/* Week Header */}
-                                        <div className="grid border-b border-zinc-900 bg-zinc-950 sticky top-0 z-40 min-w-[800px] md:min-w-0" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
-                                            <div className="h-16 border-r border-zinc-900" />
-                                            {Array.from({ length: 7 }).map((_, i) => {
-                                                const day = addDays(startOfWeek(currentDate, { weekStartsOn: 0 }), i);
-                                                const isToday = isSameDay(day, new Date());
-                                                return (
-                                                    <div
-                                                        key={i}
-                                                        onClick={() => {
-                                                            setCurrentDate(day);
-                                                            setViewMode('day');
-                                                        }}
-                                                        className="h-16 flex flex-col items-center justify-center border-r border-zinc-900/50 bg-zinc-900/10 cursor-pointer hover:bg-white/5 transition-colors"
+                                    <div className="flex-1">
+                                        {timeSlots.map(time => {
+                                            const slotAppts = appointments.filter(a =>
+                                                isSameDay(parseISO(a.data_horario), currentDate) &&
+                                                format(parseISO(a.data_horario), "HH:00") === time &&
+                                                (selectedBarberId === 'all' || a.barbeiro_id === selectedBarberId)
+                                            );
+                                            return (
+                                                <div key={time} className="grid grid-cols-[65px_1fr] md:grid-cols-[100px_1fr]">
+                                                    <div className="flex items-center justify-center border-r border-zinc-900 text-[11px] font-serif italic text-zinc-600">{time}</div>
+                                                    <TimeSlot
+                                                        time={time}
+                                                        date={currentDate}
+                                                        onClick={() => handleSlotClick(currentDate, time)}
+                                                        onDrop={processDrop}
                                                     >
-                                                        <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{format(day, 'EEE', { locale: ptBR })}</span>
-                                                        <span className={`text-xl font-serif font-black ${isToday ? 'text-[#d4af37]' : 'text-zinc-500'}`}>{format(day, 'dd')}</span>
-                                                    </div>
-                                                );
-                                            })}
+                                                        {/* MULTI-TENANCY RENDER */}
+                                                        <div className="flex flex-row flex-wrap gap-2 p-2 w-full h-full pointer-events-none">
+                                                            {/* pointer-events-none on container so clicks pass to TimeSlot if empty space, but Card has pointer-events-auto */}
+                                                            {slotAppts.map(appt => (
+                                                                <div key={appt.id} className="relative flex-1 min-w-[150px] h-[80px] pointer-events-auto">
+                                                                    <AppointmentCard
+                                                                        appt={appt}
+                                                                        onClick={(e) => { e.stopPropagation(); setActiveManagement(appt); }}
+                                                                        onDragStart={handleDragStart}
+                                                                        className="absolute inset-0" // Fill the wrapper
+                                                                        showBarber={selectedBarberId === 'all'}
+                                                                    />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </TimeSlot>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        case 'week':
+                            return (
+                                <div key="week-view" className="flex-1 w-full min-h-[80vh] flex flex-col overflow-y-auto overflow-x-auto">
+                                    {/* Week Header */}
+                                    <div className="grid border-b border-zinc-900 bg-zinc-950 sticky top-0 z-40 min-w-[800px] md:min-w-0" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
+                                        <div className="h-16 border-r border-zinc-900" />
+                                        {Array.from({ length: 7 }).map((_, i) => {
+                                            const day = addDays(startOfWeek(currentDate, { weekStartsOn: 0 }), i);
+                                            const isToday = isSameDay(day, new Date());
+                                            return (
+                                                <div
+                                                    key={i}
+                                                    onClick={() => {
+                                                        setCurrentDate(day);
+                                                        setViewMode('day');
+                                                    }}
+                                                    className="h-16 flex flex-col items-center justify-center border-r border-zinc-900/50 bg-zinc-900/10 cursor-pointer hover:bg-white/5 transition-colors"
+                                                >
+                                                    <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{format(day, 'EEE', { locale: ptBR })}</span>
+                                                    <span className={`text-xl font-serif font-black ${isToday ? 'text-[#d4af37]' : 'text-zinc-500'}`}>{format(day, 'dd')}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Week Grid Content */}
+                                    <div className="grid w-full min-w-[800px] md:min-w-0" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
+                                        {/* Time Column (Left) */}
+                                        <div className="flex flex-col">
+                                            {timeSlots.map(time => (
+                                                <div key={time} className="h-[100px] flex items-center justify-center border-b border-r border-zinc-900/50 text-[10px] font-serif italic text-zinc-700 bg-zinc-950/50">
+                                                    {time}
+                                                </div>
+                                            ))}
                                         </div>
 
-                                        {/* Week Grid Content */}
-                                        <div className="grid w-full min-w-[800px] md:min-w-0" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
-                                            {/* Time Column (Left) */}
-                                            <div className="flex flex-col">
-                                                {timeSlots.map(time => (
-                                                    <div key={time} className="h-[100px] flex items-center justify-center border-b border-r border-zinc-900/50 text-[10px] font-serif italic text-zinc-700 bg-zinc-950/50">
-                                                        {time}
-                                                    </div>
-                                                ))}
-                                            </div>
+                                        {/* Days Columns */}
+                                        {Array.from({ length: 7 }).map((_, colIndex) => {
+                                            const day = addDays(startOfWeek(currentDate, { weekStartsOn: 0 }), colIndex);
+                                            return (
+                                                <div key={colIndex} className="flex flex-col border-r border-zinc-900/30">
+                                                    {timeSlots.map(time => {
+                                                        // Find appointments for this Slot (FILTER instead of FIND)
+                                                        const slotAppts = appointments.filter(a =>
+                                                            isSameDay(parseISO(a.data_horario), day) &&
+                                                            format(parseISO(a.data_horario), "HH:00") === time &&
+                                                            (selectedBarberId === 'all' || a.barbeiro_id === selectedBarberId)
+                                                        );
 
-                                            {/* Days Columns */}
-                                            {Array.from({ length: 7 }).map((_, colIndex) => {
-                                                const day = addDays(startOfWeek(currentDate, { weekStartsOn: 0 }), colIndex);
-                                                return (
-                                                    <div key={colIndex} className="flex flex-col border-r border-zinc-900/30">
-                                                        {timeSlots.map(time => {
-                                                            // Find appointments for this Slot (FILTER instead of FIND)
-                                                            const slotAppts = appointments.filter(a =>
-                                                                isSameDay(parseISO(a.data_horario), day) &&
-                                                                format(parseISO(a.data_horario), "HH:00") === time &&
-                                                                (selectedBarberId === 'all' || a.barbeiro_id === selectedBarberId)
-                                                            );
+                                                        return (
+                                                            <div key={time} className="h-auto min-h-[100px] border-b border-zinc-900/30 relative bg-zinc-950/20 hover:bg-zinc-900/40 transition-colors flex flex-col">
+                                                                {/* Slot Container */}
+                                                                <TimeSlot
+                                                                    time={time}
+                                                                    date={day}
+                                                                    onClick={() => {
+                                                                        // Smart Click: If has appointments, open detail view. Else, new appointment.
+                                                                        if (slotAppts.length > 0) {
+                                                                            setSelectedSlotData(slotAppts);
+                                                                        } else {
+                                                                            handleSlotClick(day, time);
+                                                                        }
+                                                                    }}
+                                                                    onDrop={processDrop}
+                                                                >
+                                                                    <div className="flex flex-col gap-1 w-full p-1 relative h-full">
+                                                                        {/* EMERGENCY FIX: Simple Slice, No Modal */}
+                                                                        {/* MOBILE: Summary Button */}
+                                                                        {slotAppts.length > 0 && (
+                                                                            <div className="md:hidden w-full h-full flex-1 min-h-[50px]">
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        setCurrentDate(day);
+                                                                                        setViewMode('day');
+                                                                                    }}
+                                                                                    className="w-full h-full bg-zinc-800 hover:bg-[#d4af37] border border-zinc-700 hover:border-[#d4af37] text-white hover:text-black rounded-lg flex flex-col items-center justify-center shadow-lg transition-all active:scale-95 group"
+                                                                                >
+                                                                                    <span className="text-[10px] font-medium opacity-70 uppercase tracking-widest group-hover:text-black/70">VISUALIZAR</span>
+                                                                                    <span className="text-xl font-black">{slotAppts.length}</span>
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
 
-                                                            return (
-                                                                <div key={time} className="h-auto min-h-[100px] border-b border-zinc-900/30 relative bg-zinc-950/20 hover:bg-zinc-900/40 transition-colors flex flex-col">
-                                                                    {/* Slot Container */}
-                                                                    <TimeSlot
-                                                                        time={time}
-                                                                        date={day}
-                                                                        onClick={() => handleSlotClick(day, time)}
-                                                                        onDrop={processDrop}
-                                                                    >
-                                                                        <div className="flex flex-col gap-1 w-full p-1 relative h-full">
-                                                                            {/* EMERGENCY FIX: Simple Slice, No Modal */}
+                                                                        {/* DESKTOP: Detailed Cards */}
+                                                                        <div className="hidden md:flex flex-col gap-1 w-full relative h-full">
                                                                             {slotAppts.slice(0, 1).map(appt => (
-                                                                                <div key={appt.id} className="relative w-full h-[70px] pointer-events-auto">
+                                                                                <div key={appt.id} className="relative w-full h-[85px] pointer-events-auto">
                                                                                     <AppointmentCard
                                                                                         appt={appt}
                                                                                         onClick={(e) => { e.stopPropagation(); setActiveManagement(appt); }}
                                                                                         onDragStart={handleDragStart}
                                                                                         className="absolute inset-0"
                                                                                         showBarber={selectedBarberId === 'all'}
+                                                                                        compact={true}
                                                                                     />
                                                                                 </div>
                                                                             ))}
-                                                                            {slotAppts.length > 1 && (
-                                                                                <div
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        setSelectedSlotData(slotAppts);
-                                                                                    }}
-                                                                                    className="absolute bottom-1 right-1 z-20 text-[9px] text-zinc-500 font-black cursor-pointer hover:text-[#d4af37] transition-colors bg-zinc-950/80 px-1 rounded"
-                                                                                >
-                                                                                    +{slotAppts.length - 1} mais
-                                                                                </div>
-                                                                            )}
+
+                                                                            {
+                                                                                slotAppts.length > 1 && (
+                                                                                    <div
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            setSelectedSlotData(slotAppts);
+                                                                                        }}
+                                                                                        className="mt-1 w-full bg-zinc-800 text-white text-[10px] md:text-xs font-black uppercase tracking-widest py-2 rounded-lg text-center shadow-md border border-zinc-700 cursor-pointer hover:bg-[#d4af37] hover:text-black transition-all active:scale-95"
+                                                                                    >
+                                                                                        +{slotAppts.length - 1} MAIS
+                                                                                    </div>
+                                                                                )
+                                                                            }
                                                                         </div>
-                                                                    </TimeSlot>
-                                                                </div>
-                                                            )
-                                                        })}
-                                                    </div>
-                                                )
-                                            })}
-                                        </div>
+
+                                                                    </div>
+                                                                </TimeSlot>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            )
+                                        })}
                                     </div>
-                                );
-                            case 'month':
-                                return (
-                                    <div key="month-view" className="h-full overflow-y-auto scrollbar-hide p-8 min-h-[600px]">
-                                        <div className="grid grid-cols-7 gap-1">
-                                            {['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'].map(d => (
-                                                <div key={d} className="text-center text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] py-4">{d}</div>
-                                            ))}
-                                            {Array.from({ length: 35 }).map((_, i) => {
-                                                const day = addDays(startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 }), i);
-                                                const isCurMonth = isSameMonth(day, currentDate);
-
-                                                // STRICT DATE FILTERING (YYYY-MM-DD)
-                                                // We compare the exact date string 'YYYY-MM-DD' to avoid "ghost" appointments from other months/years
-                                                const cellDateStr = format(day, 'yyyy-MM-dd');
-                                                const hasAppts = appointments.filter(a => {
-                                                    const apptDate = parseISO(a.data_horario);
-                                                    return format(apptDate, 'yyyy-MM-dd') === cellDateStr &&
-                                                        (selectedBarberId === 'all' || a.barbeiro_id === selectedBarberId);
-                                                });
-
-                                                return (
-                                                    <div
-                                                        key={i}
-                                                        onClick={() => { setCurrentDate(day); setViewMode('day'); }}
-                                                        className={`h-32 border border-zinc-900/50 rounded-xl p-3 bg-zinc-900/10 hover:bg-zinc-900/30 transition-colors cursor-pointer ${!isCurMonth && 'opacity-20'}`}
-                                                        onDragOver={(e) => e.preventDefault()}
-                                                        onDrop={(e) => {
-                                                            e.preventDefault();
-                                                            const droppedId = e.dataTransfer.getData("text/plain");
-                                                            if (droppedId) {
-                                                                const originalAppt = appointments.find(a => a.id == droppedId);
-                                                                const originalTime = originalAppt ? format(parseISO(originalAppt.data_horario), 'HH:mm') : '09:00';
-                                                                processDrop(day, originalTime, droppedId);
-                                                            }
-                                                        }}
-                                                    >
-                                                        <span className={`text-lg font-black ${isSameDay(day, new Date()) ? 'text-[#d4af37]' : 'text-zinc-500'}`}>{format(day, 'dd')}</span>
-                                                        <div className="mt-2 space-y-1">
-                                                            {hasAppts.slice(0, 2).map(a => (
-                                                                <div
-                                                                    key={`${a.id}-${cellDateStr}`} // Unique key: ID + Date
-                                                                    draggable
-                                                                    onDragStart={(e) => handleDragStart(e, a.id)}
-                                                                    className="text-[9px] bg-[#d4af37]/10 text-[#d4af37] px-2 py-1 rounded-md font-bold uppercase truncate cursor-grab active:cursor-grabbing"
-                                                                >
-                                                                    {a.cliente_nome}
-                                                                </div>
-                                                            ))}
-                                                            {hasAppts.length > 2 && <div className="text-[8px] text-zinc-600 font-black pl-1">+{hasAppts.length - 2}</div>}
-                                                        </div>
-                                                    </div>
-                                                )
-                                            })}
-                                        </div>
-                                    </div>
-                                );
-                            default:
-                                return null;
-                        }
-                    })()}
-                </div>
-
-                {/* FAB REMOVED - MOVED TO BOTTOM NAV */}
-            </main >
-
-            {selectedSlotData && (
-                <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm' onClick={() => setSelectedSlotData(null)}>
-                    <div className='bg-zinc-900 border border-[#d4af37] p-6 rounded-2xl w-96 max-h-[80vh] overflow-y-auto shadow-2xl' onClick={e => e.stopPropagation()}>
-                        <h3 className='text-[#d4af37] text-xl font-serif font-black mb-4 uppercase tracking-wider'>Agendamentos do Horário</h3>
-                        <div className='space-y-3'>
-                            {selectedSlotData.map(item => (
-                                <div
-                                    key={item.id}
-                                    className='bg-zinc-800/50 p-4 rounded-xl border border-white/5 hover:bg-zinc-800 transition-colors cursor-pointer'
-                                    onClick={() => {
-                                        setActiveManagement(item);
-                                        setSelectedSlotData(null);
-                                    }}
-                                >
-                                    <p className='font-bold text-white uppercase text-sm'>{item.cliente_nome}</p>
-                                    <p className='text-xs text-[#d4af37] mt-1'>{item.servico_nome}</p>
-                                    <p className='text-[10px] text-zinc-500 mt-2 font-mono'>{item.barbeiro_nome || 'Barbeiro'}</p>
                                 </div>
-                            ))}
-                        </div>
-                        <button onClick={() => setSelectedSlotData(null)} className='mt-6 w-full bg-red-500/10 text-red-500 py-3 rounded-xl hover:bg-red-500/20 font-black uppercase text-xs tracking-widest transition-colors'>Fechar</button>
-                    </div>
-                </div>
-            )}
+                            );
+                        case 'month':
+                            return (
+                                <div key="month-view" className="h-full overflow-y-auto scrollbar-hide p-8 min-h-[600px]">
+                                    <div className="grid grid-cols-7 gap-1">
+                                        {['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'].map(d => (
+                                            <div key={d} className="text-center text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] py-4">{d}</div>
+                                        ))}
+                                        {Array.from({ length: 35 }).map((_, i) => {
+                                            const day = addDays(startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 }), i);
+                                            const isCurMonth = isSameMonth(day, currentDate);
 
-            {activeManagement && (
-                <div className='fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm' onClick={() => setActiveManagement(null)}>
-                    <div className='bg-zinc-950 border border-[#d4af37] p-8 rounded-2xl w-full max-w-md shadow-2xl relative' onClick={e => e.stopPropagation()}>
+                                            // STRICT DATE FILTERING (YYYY-MM-DD)
+                                            // We compare the exact date string 'YYYY-MM-DD' to avoid "ghost" appointments from other months/years
+                                            const cellDateStr = format(day, 'yyyy-MM-dd');
+                                            const hasAppts = appointments.filter(a => {
+                                                const apptDate = parseISO(a.data_horario);
+                                                return format(apptDate, 'yyyy-MM-dd') === cellDateStr &&
+                                                    (selectedBarberId === 'all' || a.barbeiro_id === selectedBarberId);
+                                            });
 
-                        {/* CABEÇALHO COM AÇÕES RÁPIDAS */}
-                        <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
-                            {/* NOME E STATUS */}
-                            <div>
-                                <h2 className="text-2xl font-black text-white tracking-tighter">
-                                    {activeManagement?.cliente_nome || 'Cliente'}
-                                </h2>
-                                <p className="text-xs text-[#d4af37] font-bold uppercase tracking-widest mt-1">
-                                    {activeManagement?.status || 'Confirmado'}
-                                </p>
+                                            return (
+                                                <div
+                                                    key={i}
+                                                    onClick={() => { setCurrentDate(day); setViewMode('day'); }}
+                                                    className={`h-32 border border-zinc-900/50 rounded-xl p-3 bg-zinc-900/10 hover:bg-zinc-900/30 transition-colors cursor-pointer ${!isCurMonth && 'opacity-20'}`}
+                                                    onDragOver={(e) => e.preventDefault()}
+                                                    onDrop={(e) => {
+                                                        e.preventDefault();
+                                                        const droppedId = e.dataTransfer.getData("text/plain");
+                                                        if (droppedId) {
+                                                            const originalAppt = appointments.find(a => a.id == droppedId);
+                                                            const originalTime = originalAppt ? format(parseISO(originalAppt.data_horario), 'HH:mm') : '09:00';
+                                                            processDrop(day, originalTime, droppedId);
+                                                        }
+                                                    }}
+                                                >
+                                                    <span className={`text-lg font-black ${isSameDay(day, new Date()) ? 'text-[#d4af37]' : 'text-zinc-500'}`}>{format(day, 'dd')}</span>
+                                                    <div className="mt-2 space-y-1">
+                                                        {hasAppts.slice(0, 2).map(a => (
+                                                            <div
+                                                                key={`${a.id}-${cellDateStr}`} // Unique key: ID + Date
+                                                                draggable
+                                                                onDragStart={(e) => handleDragStart(e, a.id)}
+                                                                className="text-[9px] bg-[#d4af37]/10 text-[#d4af37] px-2 py-1 rounded-md font-bold uppercase truncate cursor-grab active:cursor-grabbing"
+                                                            >
+                                                                {a.cliente_nome}
+                                                            </div>
+                                                        ))}
+                                                        {hasAppts.length > 2 && <div className="text-[8px] text-zinc-600 font-black pl-1">+{hasAppts.length - 2}</div>}
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        default:
+                            return null;
+                    }
+                })()}
+            </div>
+
+            {/* RESTORED FAB */}
+            <button
+                onClick={handleFabClick}
+                className="md:hidden fixed bottom-6 right-6 w-16 h-16 bg-[#d4af37] rounded-full shadow-2xl shadow-[#d4af37]/40 flex items-center justify-center text-black z-50 active:scale-90 transition-transform"
+            >
+                <Plus size={24} />
+            </button>
+
+
+            {
+                selectedSlotData && (
+                    <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm' onClick={() => setSelectedSlotData(null)}>
+                        <div className='bg-zinc-900 border border-[#d4af37] p-6 rounded-2xl w-96 max-h-[80vh] overflow-y-auto shadow-2xl' onClick={e => e.stopPropagation()}>
+                            <h3 className='text-[#d4af37] text-xl font-serif font-black mb-4 uppercase tracking-wider'>Agendamentos do Horário</h3>
+                            <div className='space-y-3'>
+                                {selectedSlotData.map(item => (
+                                    <div
+                                        key={item.id}
+                                        className='bg-zinc-800/50 p-4 rounded-xl border border-white/5 hover:bg-zinc-800 transition-colors cursor-pointer'
+                                        onClick={() => {
+                                            setActiveManagement(item);
+                                            setSelectedSlotData(null);
+                                        }}
+                                    >
+                                        <p className='font-bold text-white uppercase text-sm'>{item.cliente_nome}</p>
+                                        <p className='text-xs text-[#d4af37] mt-1'>{item.servico_nome}</p>
+                                        <p className='text-[10px] text-zinc-500 mt-2 font-mono'>{item.barbeiro_nome || 'Barbeiro'}</p>
+                                    </div>
+                                ))}
                             </div>
+                            <button onClick={() => setSelectedSlotData(null)} className='mt-6 w-full bg-red-500/10 text-red-500 py-3 rounded-xl hover:bg-red-500/20 font-black uppercase text-xs tracking-widest transition-colors'>Fechar</button>
+                        </div>
+                    </div>
+                )
+            }
 
-                            {/* BARRA DE ÍCONES (AÇÕES) */}
-                            <div className="flex items-center gap-3">
-                                {/* 1. WHATSAPP */}
-                                {activeManagement?.cliente_telefone && (
+            {
+                activeManagement && (
+                    <div className='fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm' onClick={() => setActiveManagement(null)}>
+                        <div className='bg-zinc-950 border border-[#d4af37] p-8 rounded-2xl w-full max-w-md shadow-2xl relative' onClick={e => e.stopPropagation()}>
+
+                            {/* CABEÇALHO COM AÇÕES RÁPIDAS */}
+                            <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
+                                {/* NOME E STATUS */}
+                                <div>
+                                    <h2 className="text-2xl font-black text-white tracking-tighter">
+                                        {activeManagement?.cliente_nome || 'Cliente'}
+                                    </h2>
+                                    <p className="text-xs text-[#d4af37] font-bold uppercase tracking-widest mt-1">
+                                        {activeManagement?.status || 'Confirmado'}
+                                    </p>
+                                </div>
+
+                                {/* BARRA DE ÍCONES (AÇÕES) */}
+                                <div className="flex items-center gap-3">
+                                    {/* 1. WHATSAPP */}
+                                    {activeManagement?.cliente_telefone && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                window.open(`https://wa.me/55${activeManagement.cliente_telefone?.replace(/\D/g, '')}`, '_blank');
+                                            }}
+                                            className="w-10 h-10 rounded-full bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white border border-green-500/30 flex items-center justify-center transition-all"
+                                            title="Chamar no WhatsApp"
+                                        >
+                                            <MessageCircle size={20} />
+                                        </button>
+                                    )}
+                                    {/* 2. REAGENDAR (Abre o modal de edição) */}
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            window.open(`https://wa.me/55${activeManagement.cliente_telefone?.replace(/\D/g, '')}`, '_blank');
+                                            handleEdit(activeManagement);
                                         }}
-                                        className="w-10 h-10 rounded-full bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white border border-green-500/30 flex items-center justify-center transition-all"
-                                        title="Chamar no WhatsApp"
+                                        className="w-10 h-10 rounded-full bg-[#d4af37]/10 text-[#d4af37] hover:bg-[#d4af37] hover:text-black border border-[#d4af37]/30 flex items-center justify-center transition-all"
+                                        title="Editar / Reagendar"
                                     >
-                                        <MessageCircle size={20} />
+                                        <CalendarClock size={20} />
                                     </button>
-                                )}
-                                {/* 2. REAGENDAR (Abre o modal de edição) */}
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEdit(activeManagement);
-                                    }}
-                                    className="w-10 h-10 rounded-full bg-[#d4af37]/10 text-[#d4af37] hover:bg-[#d4af37] hover:text-black border border-[#d4af37]/30 flex items-center justify-center transition-all"
-                                    title="Editar / Reagendar"
-                                >
-                                    <CalendarClock size={20} />
-                                </button>
-                                {/* 3. EXCLUIR */}
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (activeManagement?.id && confirm("Tem certeza que deseja cancelar este agendamento?")) {
-                                            handleDelete(activeManagement.id);
-                                        }
-                                    }}
-                                    className="w-10 h-10 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/30 flex items-center justify-center transition-all"
-                                    title="Cancelar Agendamento"
-                                >
-                                    <Trash2 size={20} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* INFO GRID */}
-                        <div className="grid grid-cols-2 gap-4 mb-8">
-                            <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5">
-                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Serviço</p>
-                                <p className="text-sm font-bold text-white uppercase">{activeManagement?.servico_nome}</p>
-                            </div>
-                            <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5">
-                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Profissional</p>
-                                <p className="text-sm font-bold text-white uppercase">{activeManagement?.barbeiro_nome || 'Barbeiro'}</p>
-                            </div>
-                            <div className="col-span-2 bg-zinc-900/50 p-4 rounded-xl border border-white/5 flex items-center gap-3">
-                                <div className="p-2 bg-[#d4af37]/10 rounded-lg text-[#d4af37]">
-                                    <Clock size={20} />
-                                </div>
-                                <div>
-                                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Data e Horário</p>
-                                    <p className="text-lg font-serif font-white">
-                                        {activeManagement?.data_horario && format(parseISO(activeManagement.data_horario), "dd 'de' MMMM", { locale: ptBR })} <span className="text-zinc-600 mx-2">|</span> {activeManagement?.data_horario && format(parseISO(activeManagement.data_horario), "HH:mm")}
-                                    </p>
+                                    {/* 3. EXCLUIR */}
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (activeManagement?.id && confirm("Tem certeza que deseja cancelar este agendamento?")) {
+                                                handleDelete(activeManagement.id);
+                                            }
+                                        }}
+                                        className="w-10 h-10 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/30 flex items-center justify-center transition-all"
+                                        title="Cancelar Agendamento"
+                                    >
+                                        <Trash2 size={20} />
+                                    </button>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* ACTIONS REMOVED (Moved to Toolbar) */}
-
-                        {/* CLOSE BUTTON */}
-                        <button
-                            onClick={() => setActiveManagement(null)}
-                            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-500 hover:text-white transition-colors"
-                        >
-                            <X size={16} />
-                        </button>
-
-                    </div>
-                </div>
-            )}
-
-            {/* NEW APPOINTMENT FORM MODAL */}
-            {isFormOpen && (
-                <div className='fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/90 backdrop-blur-sm' onClick={() => setIsFormOpen(false)}>
-                    <div className='bg-zinc-950 border-t md:border border-[#d4af37] p-6 md:p-8 rounded-t-[32px] md:rounded-2xl w-full md:max-w-md shadow-2xl relative h-[90vh] md:h-auto flex flex-col md:block overflow-hidden transition-transform duration-300 transform translate-y-0' onClick={e => e.stopPropagation()}>
-                        <div className="text-center mb-6">
-                            <h2 className="text-2xl font-serif font-black text-white uppercase mb-1">
-                                {formData.id ? "Editar Agendamento" : "Novo Agendamento"}
-                            </h2>
-                            <p className="text-zinc-500 text-xs uppercase tracking-widest">
-                                {formData.data_horario && format(parseISO(formData.data_horario), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}
-                            </p>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Nome do Cliente</label>
-                                <input
-                                    autoFocus
-                                    type="text"
-                                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none transition-colors"
-                                    value={formData.cliente_nome}
-                                    onChange={e => setFormData({ ...formData, cliente_nome: e.target.value })}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Telefone</label>
-                                <input
-                                    type="tel"
-                                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none transition-colors"
-                                    value={formData.cliente_telefone}
-                                    onChange={e => setFormData({ ...formData, cliente_telefone: e.target.value })}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Serviço</label>
-                                <select
-                                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none transition-colors"
-                                    value={formData.servico_id}
-                                    onChange={e => setFormData({ ...formData, servico_id: e.target.value })}
-                                >
-                                    {availableServices.map(s => (
-                                        <option key={s.id} value={s.id}>{s.nome} - R$ {s.preco}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* --- CAMPOS PARA SERVIÇO PERSONALIZADO --- */}
-                            {formData.servico_id === 'custom' && (
-                                <div className="mt-3 p-3 bg-zinc-900 border border-zinc-700 rounded-lg animate-in slide-in-from-top-2">
-                                    <p className="text-[#d4af37] text-xs font-bold uppercase mb-3 flex items-center gap-2">
-                                        ✏️ Detalhes do Serviço Extra
-                                    </p>
-
-                                    <div className="grid grid-cols-3 gap-3">
-                                        {/* CAMPO DE DESCRIÇÃO (Ocupa 2/3) */}
-                                        <div className="col-span-2">
-                                            <label className="text-[10px] text-zinc-500 uppercase font-bold">Descrição / Obs</label>
-                                            <input
-                                                type="text"
-                                                placeholder="Ex: Luzes, Sobrancelha..."
-                                                value={customDescription}
-                                                onChange={(e) => setCustomDescription(e.target.value)}
-                                                className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-white text-sm focus:border-[#d4af37] outline-none"
-                                            />
-                                        </div>
-                                        {/* CAMPO DE VALOR (Ocupa 1/3) */}
-                                        <div className="col-span-1">
-                                            <label className="text-[10px] text-zinc-500 uppercase font-bold">Valor (R$)</label>
-                                            <input
-                                                type="number"
-                                                placeholder="0,00"
-                                                value={customPrice}
-                                                onChange={(e) => setCustomPrice(e.target.value)}
-                                                className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-[#d4af37] font-bold text-sm focus:border-[#d4af37] outline-none"
-                                            />
-                                        </div>
+                            {/* INFO GRID */}
+                            <div className="grid grid-cols-2 gap-4 mb-8">
+                                <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5">
+                                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Serviço</p>
+                                    <p className="text-sm font-bold text-white uppercase">{activeManagement?.servico_nome}</p>
+                                </div>
+                                <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5">
+                                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Profissional</p>
+                                    <p className="text-sm font-bold text-white uppercase">{activeManagement?.barbeiro_nome || 'Barbeiro'}</p>
+                                </div>
+                                <div className="col-span-2 bg-zinc-900/50 p-4 rounded-xl border border-white/5 flex items-center gap-3">
+                                    <div className="p-2 bg-[#d4af37]/10 rounded-lg text-[#d4af37]">
+                                        <Clock size={20} />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Data e Horário</p>
+                                        <p className="text-lg font-serif font-white">
+                                            {activeManagement?.data_horario && format(parseISO(activeManagement.data_horario), "dd 'de' MMMM", { locale: ptBR })} <span className="text-zinc-600 mx-2">|</span> {activeManagement?.data_horario && format(parseISO(activeManagement.data_horario), "HH:mm")}
+                                        </p>
                                     </div>
                                 </div>
-                            )}
+                            </div>
 
-                            {/* DATE TIME EDITOR - ONLY IF EDITING OR RESCHEDULING */}
-                            <div className="grid grid-cols-2 gap-3">
+                            {/* ACTIONS REMOVED (Moved to Toolbar) */}
+
+                            {/* CLOSE BUTTON */}
+                            <button
+                                onClick={() => setActiveManagement(null)}
+                                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-500 hover:text-white transition-colors"
+                            >
+                                <X size={16} />
+                            </button>
+
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* NEW APPOINTMENT FORM MODAL */}
+            {
+                isFormOpen && (
+                    <div className='fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/90 backdrop-blur-sm' onClick={() => setIsFormOpen(false)}>
+                        <div className='bg-zinc-950 border-t md:border border-[#d4af37] p-6 md:p-8 pb-40 md:pb-8 rounded-t-[32px] md:rounded-2xl w-full md:max-w-md shadow-2xl relative max-h-[90vh] flex flex-col md:block overflow-y-auto overflow-x-hidden transition-transform duration-300 transform translate-y-0' onClick={e => e.stopPropagation()}>
+                            <div className="text-center mb-6">
+                                <h2 className="text-lg md:text-2xl font-serif font-black text-white uppercase mb-1">
+                                    {formData.id ? "Editar Agendamento" : "Novo Agendamento"}
+                                </h2>
+                                <p className="text-zinc-500 text-xs uppercase tracking-widest">
+                                    {formData.data_horario && format(parseISO(formData.data_horario), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}
+                                </p>
+                            </div>
+
+                            <div className="space-y-4">
                                 <div>
-                                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Data</label>
+                                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Nome do Cliente</label>
                                     <input
-                                        type="date"
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none"
-                                        value={formData.data_horario ? format(parseISO(formData.data_horario), 'yyyy-MM-dd') : ''}
-                                        onChange={e => {
-                                            const oldDate = parseISO(formData.data_horario);
-                                            const newD = parseISO(e.target.value);
-                                            // Preserve time
-                                            newD.setHours(oldDate.getHours(), oldDate.getMinutes());
-                                            setFormData({ ...formData, data_horario: newD.toISOString() });
-                                        }}
+                                        autoFocus
+                                        type="text"
+                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none transition-colors"
+                                        value={formData.cliente_nome}
+                                        onChange={e => setFormData({ ...formData, cliente_nome: e.target.value })}
                                     />
                                 </div>
 
-
-                                {/* --- FEEDBACK VISUAL DE MODIFICAÇÃO (ANTES vs DEPOIS) --- */}
-                                <div className="col-span-2 my-2 transition-all duration-300">
-                                    {(() => {
-                                        const originalAppt = formData.id ? appointments.find(a => a.id === formData.id) : null;
-                                        const isChanged = originalAppt && formData.data_horario && !isSameDay(parseISO(formData.data_horario), parseISO(originalAppt.data_horario));
-
-                                        return isChanged ? (
-                                            <div className="bg-green-500/10 border-2 border-green-500 rounded-lg p-3 text-center animate-pulse shadow-[0_0_20px_rgba(34,197,94,0.2)]">
-                                                <p className="text-green-500 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center justify-center gap-2">
-                                                    <span className="line-through opacity-50 text-zinc-400">
-                                                        {format(parseISO(originalAppt!.data_horario), "dd 'de' MMM", { locale: ptBR })}
-                                                    </span>
-                                                    <span>➜</span>
-                                                    <span>MUDANDO PARA</span>
-                                                </p>
-                                                <p className="text-white font-black text-xl uppercase">
-                                                    {format(parseISO(formData.data_horario), "EEEE", { locale: ptBR })}
-                                                </p>
-                                                <p className="text-green-400 text-sm font-bold">
-                                                    {format(parseISO(formData.data_horario), "dd 'de' MMMM", { locale: ptBR })}
-                                                </p>
-                                            </div>
-                                        ) : (
-                                            <div className={`p-3 rounded-lg text-center border ${formData.id ? 'bg-zinc-900 border-zinc-800 opacity-60' : 'bg-zinc-900 border-[#d4af37] shadow-[0_0_15px_rgba(212,175,55,0.1)]'}`}>
-                                                <p className={`text-[10px] uppercase tracking-[0.2em] mb-1 ${formData.id ? 'text-zinc-500' : 'text-[#d4af37]'}`}>
-                                                    {formData.id ? 'DATA ATUAL (SEM ALTERAÇÃO)' : 'DATA SELECIONADA'}
-                                                </p>
-                                                <p className={`font-black text-xl uppercase leading-none ${formData.id ? 'text-zinc-400' : 'text-[#d4af37]'}`}>
-                                                    {formData.data_horario ? format(parseISO(formData.data_horario), "EEEE", { locale: ptBR }) : '---'}
-                                                </p>
-                                                <p className={`text-sm font-medium mt-1 ${formData.id ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    {formData.data_horario ? format(parseISO(formData.data_horario), "dd 'de' MMMM", { locale: ptBR }) : 'Selecione a data'}
-                                                </p>
-                                            </div>
-                                        );
-                                    })()}
+                                <div>
+                                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Telefone</label>
+                                    <input
+                                        type="tel"
+                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none transition-colors"
+                                        value={formData.cliente_telefone}
+                                        onChange={e => setFormData({ ...formData, cliente_telefone: e.target.value })}
+                                    />
                                 </div>
 
                                 <div>
-                                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Horário</label>
+                                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Serviço</label>
                                     <select
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none"
-                                        value={formData.data_horario ? format(parseISO(formData.data_horario), 'HH:mm') : ''}
-                                        onChange={e => {
-                                            const oldDate = parseISO(formData.data_horario);
-                                            const [h, m] = e.target.value.split(':').map(Number);
-                                            const newD = new Date(oldDate);
-                                            newD.setHours(h, m);
-                                            setFormData({ ...formData, data_horario: newD.toISOString() });
-                                        }}
+                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none transition-colors"
+                                        value={formData.servico_id}
+                                        onChange={e => setFormData({ ...formData, servico_id: e.target.value })}
                                     >
-                                        {Array.from({ length: 14 }, (_, i) => `${String(i + 9).padStart(2, '0')}:00`).map(t => (
-                                            <option key={t} value={t}>{t}</option>
+                                        {availableServices.map(s => (
+                                            <option key={s.id} value={s.id}>{s.nome} - R$ {s.preco}</option>
                                         ))}
                                     </select>
                                 </div>
+
+                                {/* --- CAMPOS PARA SERVIÇO PERSONALIZADO --- */}
+                                {formData.servico_id === 'custom' && (
+                                    <div className="mt-3 p-3 bg-zinc-900 border border-zinc-700 rounded-lg animate-in slide-in-from-top-2">
+                                        <p className="text-[#d4af37] text-xs font-bold uppercase mb-3 flex items-center gap-2">
+                                            ✏️ Detalhes do Serviço Extra
+                                        </p>
+
+                                        <div className="grid grid-cols-3 gap-3">
+                                            {/* CAMPO DE DESCRIÇÃO (Ocupa 2/3) */}
+                                            <div className="col-span-2">
+                                                <label className="text-[10px] text-zinc-500 uppercase font-bold">Descrição / Obs</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Ex: Luzes, Sobrancelha..."
+                                                    value={customDescription}
+                                                    onChange={(e) => setCustomDescription(e.target.value)}
+                                                    className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-white text-sm focus:border-[#d4af37] outline-none"
+                                                />
+                                            </div>
+                                            {/* CAMPO DE VALOR (Ocupa 1/3) */}
+                                            <div className="col-span-1">
+                                                <label className="text-[10px] text-zinc-500 uppercase font-bold">Valor (R$)</label>
+                                                <input
+                                                    type="number"
+                                                    placeholder="0,00"
+                                                    value={customPrice}
+                                                    onChange={(e) => setCustomPrice(e.target.value)}
+                                                    className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-[#d4af37] font-bold text-sm focus:border-[#d4af37] outline-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* DATE TIME EDITOR - ONLY IF EDITING OR RESCHEDULING */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Data</label>
+                                        <input
+                                            type="date"
+                                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none"
+                                            value={formData.data_horario ? format(parseISO(formData.data_horario), 'yyyy-MM-dd') : ''}
+                                            onChange={e => {
+                                                const oldDate = parseISO(formData.data_horario);
+                                                const newD = parseISO(e.target.value);
+                                                // Preserve time
+                                                newD.setHours(oldDate.getHours(), oldDate.getMinutes());
+                                                setFormData({ ...formData, data_horario: newD.toISOString() });
+                                            }}
+                                        />
+                                    </div>
+
+
+                                    {/* --- FEEDBACK VISUAL DE MODIFICAÇÃO (ANTES vs DEPOIS) --- */}
+                                    <div className="col-span-2 my-2 transition-all duration-300">
+                                        {(() => {
+                                            const originalAppt = formData.id ? appointments.find(a => a.id === formData.id) : null;
+                                            const isChanged = originalAppt && formData.data_horario && !isSameDay(parseISO(formData.data_horario), parseISO(originalAppt.data_horario));
+
+                                            return isChanged ? (
+                                                <div className="bg-green-500/10 border-2 border-green-500 rounded-lg p-3 text-center animate-pulse shadow-[0_0_20px_rgba(34,197,94,0.2)]">
+                                                    <p className="text-green-500 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center justify-center gap-2">
+                                                        <span className="line-through opacity-50 text-zinc-400">
+                                                            {format(parseISO(originalAppt!.data_horario), "dd 'de' MMM", { locale: ptBR })}
+                                                        </span>
+                                                        <span>➜</span>
+                                                        <span>MUDANDO PARA</span>
+                                                    </p>
+                                                    <p className="text-white font-black text-xl uppercase">
+                                                        {format(parseISO(formData.data_horario), "EEEE", { locale: ptBR })}
+                                                    </p>
+                                                    <p className="text-green-400 text-sm font-bold">
+                                                        {format(parseISO(formData.data_horario), "dd 'de' MMMM", { locale: ptBR })}
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <div className={`p-3 rounded-lg text-center border ${formData.id ? 'bg-zinc-900 border-zinc-800 opacity-60' : 'bg-zinc-900 border-[#d4af37] shadow-[0_0_15px_rgba(212,175,55,0.1)]'}`}>
+                                                    <p className={`text-[10px] uppercase tracking-[0.2em] mb-1 ${formData.id ? 'text-zinc-500' : 'text-[#d4af37]'}`}>
+                                                        {formData.id ? 'DATA ATUAL (SEM ALTERAÇÃO)' : 'DATA SELECIONADA'}
+                                                    </p>
+                                                    <p className={`font-black text-xl uppercase leading-none ${formData.id ? 'text-zinc-400' : 'text-[#d4af37]'}`}>
+                                                        {formData.data_horario ? format(parseISO(formData.data_horario), "EEEE", { locale: ptBR }) : '---'}
+                                                    </p>
+                                                    <p className={`text-sm font-medium mt-1 ${formData.id ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                        {formData.data_horario ? format(parseISO(formData.data_horario), "dd 'de' MMMM", { locale: ptBR }) : 'Selecione a data'}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Horário</label>
+                                        <select
+                                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none"
+                                            value={formData.data_horario ? format(parseISO(formData.data_horario), 'HH:mm') : ''}
+                                            onChange={e => {
+                                                const oldDate = parseISO(formData.data_horario);
+                                                const [h, m] = e.target.value.split(':').map(Number);
+                                                const newD = new Date(oldDate);
+                                                newD.setHours(h, m);
+                                                setFormData({ ...formData, data_horario: newD.toISOString() });
+                                            }}
+                                        >
+                                            {Array.from({ length: 14 }, (_, i) => `${String(i + 9).padStart(2, '0')}:00`).map(t => (
+                                                <option key={t} value={t}>{t}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
                             </div>
 
-                        </div>
+                            <div className="mt-auto md:mt-8 grid grid-cols-2 gap-3 pt-4 border-t border-zinc-900 md:border-none pb-12 md:pb-0">
+                                <button
+                                    onClick={() => setIsFormOpen(false)}
+                                    className="h-16 md:h-14 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 rounded-2xl md:rounded-xl flex items-center justify-center font-black text-sm md:text-xs uppercase tracking-widest transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleSaveForm}
+                                    className="h-16 md:h-14 bg-[#d4af37] hover:bg-[#b5952f] text-black rounded-2xl md:rounded-xl flex items-center justify-center font-black text-sm md:text-xs uppercase tracking-widest transition-colors shadow-lg shadow-[#d4af37]/20"
+                                >
+                                    {formData.id ? "Atualizar" : "Confirmar"}
+                                </button>
+                            </div>
 
-                        <div className="mt-auto md:mt-8 grid grid-cols-2 gap-3 pt-4 border-t border-zinc-900 md:border-none">
                             <button
                                 onClick={() => setIsFormOpen(false)}
-                                className="h-16 md:h-14 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 rounded-2xl md:rounded-xl flex items-center justify-center font-black text-sm md:text-xs uppercase tracking-widest transition-colors"
+                                className="absolute top-6 right-6 p-4 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-500 hover:text-white transition-colors md:hidden"
                             >
-                                Cancelar
+                                <X size={20} />
                             </button>
                             <button
-                                onClick={handleSaveForm}
-                                className="h-16 md:h-14 bg-[#d4af37] hover:bg-[#b5952f] text-black rounded-2xl md:rounded-xl flex items-center justify-center font-black text-sm md:text-xs uppercase tracking-widest transition-colors shadow-lg shadow-[#d4af37]/20"
+                                onClick={() => setIsFormOpen(false)}
+                                className="hidden md:flex absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-900 items-center justify-center text-zinc-500 hover:text-white transition-colors"
                             >
-                                {formData.id ? "Atualizar" : "Confirmar"}
+                                <X size={16} />
                             </button>
                         </div>
+                    </div>
+                )
+            }
 
-                        <button
-                            onClick={() => setIsFormOpen(false)}
-                            className="absolute top-6 right-6 p-4 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-500 hover:text-white transition-colors md:hidden"
-                        >
-                            <X size={20} />
-                        </button>
-                        <button
-                            onClick={() => setIsFormOpen(false)}
-                            className="hidden md:flex absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-900 items-center justify-center text-zinc-500 hover:text-white transition-colors"
-                        >
-                            <X size={16} />
-                        </button>
+            {/* TEAM SELECTION MODAL */}
+            {isFilterOpen && (
+                <div
+                    className="fixed inset-0 z-[90] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+                    onClick={() => setIsFilterOpen(false)}
+                >
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-white font-serif font-black uppercase text-xl">Filtrar Profissional</h3>
+                            <button onClick={() => setIsFilterOpen(false)} className="text-zinc-500 hover:text-white">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={() => { setSelectedBarberId('all'); setIsFilterOpen(false); }}
+                                className={`w-full p-4 rounded-xl font-black uppercase tracking-widest text-sm flex items-center justify-between transition-all ${selectedBarberId === 'all' ? 'bg-[#d4af37] text-black' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
+                            >
+                                <span>Todos</span>
+                                {selectedBarberId === 'all' && <Check size={18} />}
+                            </button>
+                            {barbers.map(b => (
+                                <button
+                                    key={b.id}
+                                    onClick={() => { setSelectedBarberId(b.id); setIsFilterOpen(false); }}
+                                    className={`w-full p-4 rounded-xl font-black uppercase tracking-widest text-sm flex items-center justify-between transition-all ${selectedBarberId === b.id ? 'bg-[#d4af37] text-black' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
+                                >
+                                    <span>{b.nome}</span>
+                                    {selectedBarberId === b.id && <Check size={18} />}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
             )}
-
-        </div >
+        </div>
     );
 }
