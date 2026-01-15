@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, LogOut, Lock, Eye, EyeOff } from 'lucide-react';
+import { Calendar, LogOut, Lock, Eye, EyeOff, Users, User, Plus } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface SidebarProps {
@@ -156,18 +156,36 @@ export default function Sidebar({ perfil, onLogout, isSimulating = false, onTogg
             </aside>
 
             {/* MOBILE BOTTOM NAV */}
-            <nav className="md:hidden fixed bottom-6 left-6 right-6 h-16 bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-[24px] flex items-center justify-around px-2 z-[9999] shadow-2xl">
-                {MENU_ITEMS.slice(0, 5).map((item, idx) => {
-                    const isActive = location.pathname === item.path;
+            {/* MOBILE BOTTOM NAV */}
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-zinc-950 border-t border-zinc-900 flex items-center justify-around px-2 z-50 pb-safe">
+                {[
+                    { icon: Calendar, label: 'Agenda', path: '/agenda' },
+                    { icon: Plus, label: 'Novo', path: '/agenda', isAction: true },
+                    { icon: Users, label: 'Equipe', path: '/team' },
+                    { icon: User, label: 'Perfil', path: '/profile' }
+                ].map((item, idx) => {
+                    const isActive = location.pathname === item.path && !item.isAction;
                     return (
                         <button
                             key={idx}
-                            onClick={() => navigate(item.path)}
-                            className={`flex flex-col items-center gap-1 transition-all ${isActive ? 'text-[#d4af37] scale-110' : 'text-zinc-600 hover:text-zinc-400'}`}
+                            onClick={() => {
+                                if (item.isAction) {
+                                    if (location.pathname !== '/agenda') {
+                                        navigate('/agenda');
+                                        setTimeout(() => window.dispatchEvent(new Event('open-new-appointment')), 100);
+                                    } else {
+                                        window.dispatchEvent(new Event('open-new-appointment'));
+                                    }
+                                } else {
+                                    navigate(item.path);
+                                }
+                            }}
+                            className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-95 ${isActive ? 'text-[#d4af37]' : 'text-zinc-500'}`}
                         >
-                            <div className={`p-2.5 rounded-xl transition-all ${isActive ? 'bg-[#d4af37]/20 border border-[#d4af37]/30 shadow-[0_0_15px_rgba(212,175,55,0.1)]' : ''}`}>
-                                {item.icon}
+                            <div className={`p-2 rounded-xl flex items-center justify-center ${isActive ? 'bg-[#d4af37]/10' : ''} ${item.isAction ? 'bg-[#d4af37] text-black rounded-2xl w-12 h-12 shadow-lg shadow-[#d4af37]/20 border border-[#d4af37]/50' : ''}`}>
+                                <item.icon size={item.isAction ? 24 : 24} />
                             </div>
+                            {!item.isAction && <span className="text-[10px] font-bold uppercase tracking-widest">{item.label}</span>}
                         </button>
                     );
                 })}

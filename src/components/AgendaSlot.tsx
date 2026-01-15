@@ -72,21 +72,21 @@ const AgendaSlot = memo(({
         }
 
         let statusStyles = '';
-        let statusIcon = <User size={12} />;
+        let statusIcon = <User size={14} />;
 
         switch (booking.status) {
             case 'atendimento':
                 statusStyles = 'bg-black border-[#d4af37] shadow-[0_0_20px_rgba(212,175,55,0.15)] animate-pulse';
-                statusIcon = <Scissors size={12} className="text-[#d4af37]" />;
+                statusIcon = <Scissors size={14} className="text-[#d4af37]" />; // Increased from 12
                 break;
             case 'finalizado':
                 statusStyles = 'bg-zinc-900 border-zinc-800 opacity-50 grayscale';
-                statusIcon = <CheckCircle size={12} className="text-zinc-600" />;
+                statusIcon = <CheckCircle size={14} className="text-zinc-600" />; // Increased from 12
                 break;
             case 'agendado':
             default:
                 statusStyles = 'bg-[#10b981]/5 border-[#10b981]/40 shadow-[0_0_10px_rgba(16,185,129,0.05)]';
-                statusIcon = <User size={12} className="text-[#10b981]" />;
+                statusIcon = <User size={14} className="text-[#10b981]" />; // Increased from 12
                 break;
         }
 
@@ -105,7 +105,7 @@ const AgendaSlot = memo(({
 
                     <div className="flex items-center gap-2 mb-1 pl-2">
                         {statusIcon}
-                        <span className="text-xs font-bold text-zinc-200 uppercase truncate tracking-wide">
+                        <span className="text-sm font-black text-white uppercase truncate tracking-wide leading-none pt-0.5">
                             {booking.cliente_nome}
                         </span>
                     </div>

@@ -48,12 +48,12 @@ export default function Login() {
                 <div className="text-center mb-12">
                     <motion.div
                         initial={{ scale: 0.8 }} animate={{ scale: 1 }}
-                        className="w-24 h-24 bg-zinc-950 border border-[#d4af37]/20 rounded-[32px] flex items-center justify-center mx-auto mb-8 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)] relative group"
+                        className="w-16 h-16 md:w-24 md:h-24 bg-zinc-950 border border-[#d4af37]/20 rounded-[24px] md:rounded-[32px] flex items-center justify-center mx-auto mb-6 md:mb-8 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)] relative group"
                     >
-                        <div className="absolute inset-0 bg-[#d4af37]/10 rounded-[32px] blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <Scissors size={40} className="text-[#d4af37] relative z-10 -rotate-12 group-hover:rotate-0 transition-transform duration-500" />
+                        <div className="absolute inset-0 bg-[#d4af37]/10 rounded-[24px] md:rounded-[32px] blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <Scissors size={32} className="text-[#d4af37] relative z-10 -rotate-12 group-hover:rotate-0 transition-transform duration-500 md:w-10 md:h-10" />
                     </motion.div>
-                    <h1 className="text-5xl font-serif font-black text-white tracking-tighter drop-shadow-2xl mb-2 lowercase italic">
+                    <h1 className="text-3xl md:text-5xl font-serif font-black text-white tracking-tighter drop-shadow-2xl mb-2 lowercase italic">
                         cartel <span className="text-[#d4af37]">96</span>
                     </h1>
                     <div className="flex items-center justify-center gap-3">

@@ -156,33 +156,35 @@ export default function Team() {
             <main className="flex-1 p-4 lg:p-8 relative overflow-y-auto h-screen scrollbar-hide flex flex-col">
 
                 {/* HEADER */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
-                    <div>
-                        <h1 className="text-4xl font-serif font-black text-white tracking-tighter drop-shadow-2xl mb-1">
-                            EQUIPE <span className="text-[#d4af37]">&</span> COMISSÕES
-                        </h1>
-                        <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em]">Gestão Financeira e Performance</p>
-                    </div>
+                <div className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-md pb-4 pt-2 -mx-4 px-4 md:mx-0 md:px-0 md:pt-0 mb-8 border-b border-zinc-900 md:border-none">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                        <div>
+                            <h1 className="text-2xl md:text-4xl font-serif font-black text-white tracking-tighter drop-shadow-2xl mb-1">
+                                EQUIPE <span className="text-[#d4af37]">&</span> COMISSÕES
+                            </h1>
+                            <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em]">Gestão Financeira e Performance</p>
+                        </div>
 
-                    <div className="flex bg-zinc-900 border border-zinc-800 p-1.5 rounded-xl">
-                        {[
-                            { id: 'today', label: 'Hoje' },
-                            { id: 'week', label: 'Esta Semana' },
-                            { id: 'month', label: 'Este Mês' }
-                        ].map((p) => (
-                            <button
-                                key={p.id}
-                                onClick={() => setPeriod(p.id as Period)}
-                                className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${period === p.id ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'text-zinc-500 hover:text-white'}`}
-                            >
-                                {p.label}
-                            </button>
-                        ))}
+                        <div className="flex bg-zinc-900 border border-zinc-800 p-1.5 rounded-xl w-full md:w-auto">
+                            {[
+                                { id: 'today', label: 'Hoje' },
+                                { id: 'week', label: 'Esta Semana' },
+                                { id: 'month', label: 'Este Mês' }
+                            ].map((p) => (
+                                <button
+                                    key={p.id}
+                                    onClick={() => setPeriod(p.id as Period)}
+                                    className={`flex-1 md:flex-none px-4 md:px-6 py-4 md:py-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${period === p.id ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'text-zinc-500 hover:text-white'}`}
+                                >
+                                    {p.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
                 {/* TOTAL SUMMARY CARD */}
-                <div className="bg-gradient-to-r from-zinc-900 via-zinc-900 to-[#d4af37]/10 border border-zinc-800 p-6 rounded-3xl mb-8 flex justify-between items-center relative overflow-hidden group">
+                <div className="w-[92%] mx-auto md:w-full bg-gradient-to-r from-zinc-900 via-zinc-900 to-[#d4af37]/10 border border-zinc-800 p-6 rounded-3xl mb-8 flex justify-between items-center relative overflow-hidden group shadow-lg">
                     {/* Gloss effect */}
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none" />
 
@@ -192,13 +194,13 @@ export default function Team() {
                         </p>
                         <h2 className="text-4xl font-black text-white">R$ {totalPayroll.toFixed(2)}</h2>
                     </div>
-                    <button className="bg-[#d4af37] hover:bg-[#b08d55] text-black font-black uppercase tracking-widest px-6 py-3 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center gap-2">
+                    <button className="bg-[#d4af37] hover:bg-[#b08d55] text-black font-black uppercase tracking-widest px-6 py-4 md:py-3 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center gap-2">
                         <CheckCircle size={18} /> Fechar Caixa
                     </button>
                 </div>
 
                 {/* BARBER GRID */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-12">
+                <div className="w-[92%] mx-auto md:w-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-24 md:pb-12">
                     {barbers.map(barber => {
                         const stats = getBarberStats(barber);
                         return (

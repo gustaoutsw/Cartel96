@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 import { format, addDays, startOfWeek, isSameDay, parseISO, isSameMonth, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Scissors as ScissorsIcon, Trash2, Plus, MessageCircle, Clock, CalendarClock, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Scissors as ScissorsIcon, Trash2, MessageCircle, Clock, CalendarClock, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { motion } from 'framer-motion';
 
@@ -451,6 +451,15 @@ export default function Agenda() {
         handleSlotClick(currentDate, nextTime);
     }, [currentDate, handleSlotClick]);
 
+    // LISTEN FOR BOTTOM NAV ACTION
+    useEffect(() => {
+        const handleNewAppointment = () => {
+            handleFabClick();
+        };
+        window.addEventListener('open-new-appointment', handleNewAppointment);
+        return () => window.removeEventListener('open-new-appointment', handleNewAppointment);
+    }, [handleFabClick]);
+
     return (
         <div className="h-screen bg-black text-white flex overflow-hidden">
             <Sidebar perfil={{ nome: 'DEMO USER', cargo: 'barbeiro' }} />
@@ -458,21 +467,21 @@ export default function Agenda() {
             <main className={`flex-1 flex flex-col h-full relative overflow-hidden transition-opacity duration-200 ${isSaving ? 'opacity-50 pointer-events-none cursor-wait' : ''}`}>
 
 
-                <header className="px-8 py-6 flex items-center justify-between shrink-0 bg-zinc-950 border-b border-zinc-900 z-50">
+                <header className="sticky top-0 px-3 md:px-8 py-2 md:py-6 flex items-center justify-between shrink-0 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 z-50">
                     <div>
-                        <h1 className="text-2xl font-serif font-black text-white uppercase tracking-tighter flex items-center gap-3">
-                            CARTEL 96 <span className="text-[#d4af37] opacity-60 text-xs font-sans tracking-[0.3em] font-normal border-l border-zinc-800 pl-3">GESTÃO PROFISSIONAL</span>
+                        <h1 className="text-lg md:text-2xl font-serif font-black text-white uppercase tracking-tighter flex items-center gap-3">
+                            CARTEL 96 <span className="hidden md:inline text-[#d4af37] opacity-60 text-xs font-sans tracking-[0.3em] font-normal border-l border-zinc-800 pl-3">GESTÃO</span>
                         </h1>
                     </div>
-                    <div className="flex gap-4">
-                        <div className="flex bg-zinc-900/50 rounded-xl p-1 border border-zinc-800">
-                            <button onClick={() => setCurrentDate(d => addDays(d, -1))} className="p-3 hover:text-white text-zinc-500 transition-colors"><ChevronLeft size={16} /></button>
-                            <button onClick={() => setCurrentDate(new Date())} className="px-4 text-[10px] font-black uppercase text-zinc-400 hover:text-[#d4af37] transition-colors tracking-widest">HOJE</button>
-                            <button onClick={() => setCurrentDate(d => addDays(d, 1))} className="p-3 hover:text-white text-zinc-500 transition-colors"><ChevronRight size={16} /></button>
+                    <div className="flex gap-2 md:gap-4">
+                        <div className="flex bg-zinc-900/50 rounded-lg md:rounded-xl p-1 border border-zinc-800 items-center">
+                            <button onClick={() => setCurrentDate(d => addDays(d, -1))} className="p-2 md:p-4 hover:text-white text-zinc-500 transition-colors bg-transparent"><ChevronLeft size={16} className="md:w-5 md:h-5" /></button>
+                            <button onClick={() => setCurrentDate(new Date())} className="px-3 md:px-6 py-1.5 md:py-3 text-[10px] md:text-xs font-black uppercase text-zinc-400 hover:text-[#d4af37] transition-colors tracking-widest">HOJE</button>
+                            <button onClick={() => setCurrentDate(d => addDays(d, 1))} className="p-2 md:p-4 hover:text-white text-zinc-500 transition-colors bg-transparent"><ChevronRight size={16} className="md:w-5 md:h-5" /></button>
                         </div>
                         {/* BARBER FILTER - VISIBLE ONLY TO OWNER */}
                         {(profile?.cargo === 'dono' || profile?.cargo === 'admin') && (
-                            <div className="bg-zinc-900/50 rounded-xl p-1 border border-zinc-800 flex items-center px-2">
+                            <div className="hidden md:flex bg-zinc-900/50 rounded-xl p-1 border border-zinc-800 items-center px-2">
                                 <select
                                     value={selectedBarberId}
                                     onChange={(e) => setSelectedBarberId(e.target.value)}
@@ -485,10 +494,10 @@ export default function Agenda() {
                                 </select>
                             </div>
                         )}
-                        <div className="flex bg-zinc-900/50 rounded-xl p-1 border border-zinc-800">
-                            <button onClick={() => setViewMode('day')} className={`px-6 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'day' ? 'bg-[#d4af37] text-black shadow-lg scale-105' : 'text-zinc-500 hover:bg-zinc-800'}`}>DIA</button>
-                            <button onClick={() => setViewMode('week')} className={`px-6 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'week' ? 'bg-[#d4af37] text-black shadow-lg scale-105' : 'text-zinc-500 hover:bg-zinc-800'}`}>SEMANA</button>
-                            <button onClick={() => setViewMode('month')} className={`px-6 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'month' ? 'bg-[#d4af37] text-black shadow-lg scale-105' : 'text-zinc-500 hover:bg-zinc-800'}`}>MÊS</button>
+                        <div className="flex bg-zinc-900/50 rounded-lg md:rounded-xl p-1 border border-zinc-800">
+                            <button onClick={() => setViewMode('day')} className={`px-3 md:px-6 py-1.5 md:py-3 rounded-md md:rounded-lg text-[10px] md:text-xs font-black uppercase tracking-widest transition-all ${viewMode === 'day' ? 'bg-[#d4af37] text-black shadow-lg scale-105' : 'text-zinc-500 hover:bg-zinc-800'}`}>DIA</button>
+                            <button onClick={() => setViewMode('week')} className={`px-3 md:px-6 py-1.5 md:py-3 rounded-md md:rounded-lg text-[10px] md:text-xs font-black uppercase tracking-widest transition-all ${viewMode === 'week' ? 'bg-[#d4af37] text-black shadow-lg scale-105' : 'text-zinc-500 hover:bg-zinc-800'}`}>SEM</button>
+                            <button onClick={() => setViewMode('month')} className={`hidden md:block px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${viewMode === 'month' ? 'bg-[#d4af37] text-black shadow-lg scale-105' : 'text-zinc-500 hover:bg-zinc-800'}`}>MÊS</button>
                         </div>
                     </div>
                 </header>
@@ -511,7 +520,7 @@ export default function Agenda() {
                                                     (selectedBarberId === 'all' || a.barbeiro_id === selectedBarberId)
                                                 );
                                                 return (
-                                                    <div key={time} className="grid" style={{ gridTemplateColumns: '100px 1fr' }}>
+                                                    <div key={time} className="grid grid-cols-[65px_1fr] md:grid-cols-[100px_1fr]">
                                                         <div className="flex items-center justify-center border-r border-zinc-900 text-[11px] font-serif italic text-zinc-600">{time}</div>
                                                         <TimeSlot
                                                             time={time}
@@ -543,9 +552,9 @@ export default function Agenda() {
                                 );
                             case 'week':
                                 return (
-                                    <div key="week-view" className="flex-1 w-full min-h-[80vh] flex flex-col overflow-y-auto overflow-x-hidden">
+                                    <div key="week-view" className="flex-1 w-full min-h-[80vh] flex flex-col overflow-y-auto overflow-x-auto">
                                         {/* Week Header */}
-                                        <div className="grid border-b border-zinc-900 bg-zinc-950 sticky top-0 z-40" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
+                                        <div className="grid border-b border-zinc-900 bg-zinc-950 sticky top-0 z-40 min-w-[800px] md:min-w-0" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
                                             <div className="h-16 border-r border-zinc-900" />
                                             {Array.from({ length: 7 }).map((_, i) => {
                                                 const day = addDays(startOfWeek(currentDate, { weekStartsOn: 0 }), i);
@@ -567,7 +576,7 @@ export default function Agenda() {
                                         </div>
 
                                         {/* Week Grid Content */}
-                                        <div className="grid w-full" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
+                                        <div className="grid w-full min-w-[800px] md:min-w-0" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
                                             {/* Time Column (Left) */}
                                             <div className="flex flex-col">
                                                 {timeSlots.map(time => (
@@ -696,16 +705,7 @@ export default function Agenda() {
                     })()}
                 </div>
 
-                {/* FAB */}
-                <button
-                    onClick={() => {
-                        console.log('FAB Clicado');
-                        handleFabClick();
-                    }}
-                    className="fixed bottom-8 right-8 w-14 h-14 bg-yellow-500 rounded-full flex items-center justify-center shadow-lg hover:bg-yellow-400 hover:scale-110 transition-all z-[9999] cursor-pointer"
-                >
-                    <Plus className="w-8 h-8 text-black" />
-                </button>
+                {/* FAB REMOVED - MOVED TO BOTTOM NAV */}
             </main >
 
             {selectedSlotData && (
@@ -830,8 +830,8 @@ export default function Agenda() {
 
             {/* NEW APPOINTMENT FORM MODAL */}
             {isFormOpen && (
-                <div className='fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm' onClick={() => setIsFormOpen(false)}>
-                    <div className='bg-zinc-950 border border-[#d4af37] p-8 rounded-2xl w-full max-w-md shadow-2xl relative' onClick={e => e.stopPropagation()}>
+                <div className='fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/90 backdrop-blur-sm' onClick={() => setIsFormOpen(false)}>
+                    <div className='bg-zinc-950 border-t md:border border-[#d4af37] p-6 md:p-8 rounded-t-[32px] md:rounded-2xl w-full md:max-w-md shadow-2xl relative h-[90vh] md:h-auto flex flex-col md:block overflow-hidden transition-transform duration-300 transform translate-y-0' onClick={e => e.stopPropagation()}>
                         <div className="text-center mb-6">
                             <h2 className="text-2xl font-serif font-black text-white uppercase mb-1">
                                 {formData.id ? "Editar Agendamento" : "Novo Agendamento"}
@@ -989,24 +989,30 @@ export default function Agenda() {
 
                         </div>
 
-                        <div className="mt-8 grid grid-cols-2 gap-3">
+                        <div className="mt-auto md:mt-8 grid grid-cols-2 gap-3 pt-4 border-t border-zinc-900 md:border-none">
                             <button
                                 onClick={() => setIsFormOpen(false)}
-                                className="h-14 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 rounded-xl flex items-center justify-center font-black text-xs uppercase tracking-widest transition-colors"
+                                className="h-16 md:h-14 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 rounded-2xl md:rounded-xl flex items-center justify-center font-black text-sm md:text-xs uppercase tracking-widest transition-colors"
                             >
                                 Cancelar
                             </button>
                             <button
                                 onClick={handleSaveForm}
-                                className="h-14 bg-[#d4af37] hover:bg-[#b5952f] text-black rounded-xl flex items-center justify-center font-black text-xs uppercase tracking-widest transition-colors shadow-lg shadow-[#d4af37]/20"
+                                className="h-16 md:h-14 bg-[#d4af37] hover:bg-[#b5952f] text-black rounded-2xl md:rounded-xl flex items-center justify-center font-black text-sm md:text-xs uppercase tracking-widest transition-colors shadow-lg shadow-[#d4af37]/20"
                             >
-                                {formData.id ? "Atualizar Agendamento" : "Confirmar Agendamento"}
+                                {formData.id ? "Atualizar" : "Confirmar"}
                             </button>
                         </div>
 
                         <button
                             onClick={() => setIsFormOpen(false)}
-                            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-500 hover:text-white transition-colors"
+                            className="absolute top-6 right-6 p-4 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-500 hover:text-white transition-colors md:hidden"
+                        >
+                            <X size={20} />
+                        </button>
+                        <button
+                            onClick={() => setIsFormOpen(false)}
+                            className="hidden md:flex absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-900 items-center justify-center text-zinc-500 hover:text-white transition-colors"
                         >
                             <X size={16} />
                         </button>

@@ -109,37 +109,39 @@ export default function StockShop() {
             <main className="flex-1 p-4 lg:p-8 relative overflow-y-auto h-screen scrollbar-hide flex flex-col">
 
                 {/* HEADER & TOGGLE */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
-                    <div>
-                        <h1 className="text-4xl font-serif font-black text-white tracking-tighter drop-shadow-2xl mb-1">
-                            {viewMode === 'stock' ? 'ESTOQUE' : 'LOJA'} <span className="text-[#d4af37]">&</span> SUPPLY
-                        </h1>
-                        <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em]">Gestão de Produtos e Vendas</p>
-                    </div>
+                <div className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-md pb-4 pt-2 -mx-4 px-4 md:mx-0 md:px-0 md:pt-0 mb-8 border-b border-zinc-900 md:border-none">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                        <div>
+                            <h1 className="text-2xl md:text-4xl font-serif font-black text-white tracking-tighter drop-shadow-2xl mb-1">
+                                {viewMode === 'stock' ? 'ESTOQUE' : 'LOJA'} <span className="text-[#d4af37]">&</span> SUPPLY
+                            </h1>
+                            <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em]">Gestão de Produtos e Vendas</p>
+                        </div>
 
-                    <div className="bg-zinc-900 border border-zinc-800 p-1.5 rounded-full flex gap-1 relative z-20">
-                        <button
-                            onClick={() => setViewMode('stock')}
-                            className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${viewMode === 'stock' ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'text-zinc-400 hover:text-white'}`}
-                        >
-                            <Package size={14} /> Estoque
-                        </button>
-                        <button
-                            onClick={() => setViewMode('shop')}
-                            className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${viewMode === 'shop' ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'text-zinc-400 hover:text-white'}`}
-                        >
-                            <ShoppingCart size={14} /> Loja
-                        </button>
+                        <div className="bg-zinc-900 border border-zinc-800 p-1.5 rounded-full flex gap-1 relative z-20 w-full md:w-auto">
+                            <button
+                                onClick={() => setViewMode('stock')}
+                                className={`flex-1 md:flex-none px-6 py-4 md:py-3 rounded-full text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${viewMode === 'stock' ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'text-zinc-400 hover:text-white'}`}
+                            >
+                                <Package size={14} /> Estoque
+                            </button>
+                            <button
+                                onClick={() => setViewMode('shop')}
+                                className={`flex-1 md:flex-none px-6 py-4 md:py-3 rounded-full text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${viewMode === 'shop' ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'text-zinc-400 hover:text-white'}`}
+                            >
+                                <ShoppingCart size={14} /> Loja
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 {/* CATEGORIES */}
-                <div className="flex gap-2 overflow-x-auto pb-4 mb-4 scrollbar-hide">
+                <div className="flex gap-2 overflow-x-auto pb-4 mb-4 scrollbar-hide px-1">
                     {['todos', 'cabelo', 'barba', 'rosto', 'acessorios'].map(cat => (
                         <button
                             key={cat}
                             onClick={() => setSelectedCategory(cat)}
-                            className={`px-4 py-2 border rounded-xl text-[10px] font-bold uppercase tracking-widest whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-zinc-100 border-white text-black' : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-600'}`}
+                            className={`px-6 py-4 md:py-3 border rounded-xl text-[10px] font-bold uppercase tracking-widest whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-zinc-100 border-white text-black' : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-600'}`}
                         >
                             {cat}
                         </button>

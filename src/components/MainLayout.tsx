@@ -45,8 +45,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
                 perfil={sidebarProfile}
                 onLogout={handleLogout}
             />
-            <main className="flex-1 transition-all duration-300 md:pl-20">
-                <div className="max-w-[1600px] mx-auto p-4 md:p-8 pb-32 md:pb-8">
+            <main className="flex-1 transition-all duration-300 md:pl-20 w-full flex flex-col">
+                <div className="flex-1 w-full max-w-[1600px] mx-auto px-0 md:p-8 pb-24 md:pb-8">
                     {children}
                 </div>
             </main>
