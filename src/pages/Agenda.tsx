@@ -10,7 +10,10 @@ import Sidebar from '../components/Sidebar';
 import { useAuth } from '../contexts/AuthContext';
 
 // NOVA TABELA DE PREÇOS - CARTEL 96
-const SERVICES = [
+// NOVA TABELA DE PREÇOS - CARTEL 96
+// NOTE: These IDs are used for fallback/display only. 
+// REAL UUIDs come from the database now.
+const HARDCODED_SERVICES_FALLBACK = [
     { id: 'degrade', nome: 'Corte Degradê', preco: 45, duration: 45 },
     { id: 'tesoura', nome: 'Corte na Tesoura', preco: 45, duration: 45 },
     { id: 'social', nome: 'Corte Social', preco: 40, duration: 30 },
@@ -217,7 +220,7 @@ export default function Agenda() {
                 const relationName = d.servicos?.nome || d.servicos?.titulo || d.servicos?.label || d.servicos?.name;
                 // Check both servico_id and servico for the ID
                 const staticId = d.servico_id || d.servico;
-                const staticName = SERVICES.find(s => s.id === staticId)?.nome;
+                const staticName = HARDCODED_SERVICES_FALLBACK.find(s => s.id === staticId)?.nome;
 
                 const serviceName = dbName || relationName || staticName || 'Serviço Extra';
 
@@ -250,15 +253,22 @@ export default function Agenda() {
 
     useEffect(() => {
         const fetchServices = async () => {
-            // const { data, error } = await supabase.from('servicos').select('*');
-            // if (data) {
-            //     console.log("📦 LOADED SERVICES:", data);
-            //     setAvailableServices(data);
-            // }
-            // if (error) console.error("Error fetching services:", error);
+            const { data, error } = await supabase.from('servicos').select('*');
+            if (data && data.length > 0) {
+                console.log("📦 LOADED SERVICES (DB):", data);
+                // Append 'custom' option if needed, using a special ID key for custom behavior logic
+                // For now, let's assume 'custom' needs to be handled.
+                // If the DB doesn't have a 'custom' entry, we manually add a UI-only option.
+                // We'll give it a fake UUID-like string or handle 'custom' specifically in submit.
 
-            // USING HARDCODED SERVICES AS REQUESTED
-            setAvailableServices(SERVICES);
+                // Check if 'custom' is in DB or we need to append
+                setAvailableServices([...data, { id: 'custom', nome: 'Outro / Personalizado', preco: 0 }]);
+            } else {
+                // Fallback if DB is empty
+                console.log("⚠️ No services in DB, using fallback");
+                setAvailableServices(HARDCODED_SERVICES_FALLBACK);
+            }
+            if (error) console.error("Error fetching services:", error);
         };
         fetchServices();
 
