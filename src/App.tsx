@@ -6,7 +6,7 @@ import { useAuth } from './contexts/AuthContext';
 // Pages
 // Pages
 // import Dashboard from './pages/Dashboard';
-import Login from './pages/login';
+import Login from './pages/Login';
 import Agenda from './pages/Agenda';
 // import AdsDashboard from './pages/AdsDashboard';
 // import CRM from './pages/CRM';

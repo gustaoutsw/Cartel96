@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+
 import { format, addDays, startOfWeek, isSameDay, parseISO, isSameMonth, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Scissors as ScissorsIcon, Trash2, Plus, MessageCircle, Clock, CalendarClock, X } from 'lucide-react';
@@ -134,11 +134,10 @@ const AppointmentCard = React.memo(({
 // --- MAIN COMPONENT ---
 
 export default function Agenda() {
-    const navigate = useNavigate();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
     const [appointments, setAppointments] = useState<Appointment[]>([]);
-    const [notification, setNotification] = useState<string | null>(null);
+
     const [activeManagement, setActiveManagement] = useState<Appointment | null>(null);
     const [selectedSlotData, setSelectedSlotData] = useState<Appointment[] | null>(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -275,8 +274,9 @@ export default function Agenda() {
 
     // Helpers
     const showToast = (msg: string) => {
-        setNotification(msg);
-        setTimeout(() => setNotification(null), 3000);
+        // setNotification(msg);
+        console.log("Toast:", msg);
+        // setTimeout(() => setNotification(null), 3000);
     };
 
     const timeSlots = useMemo(() => Array.from({ length: 14 }, (_, i) => `${String(i + 9).padStart(2, '0')}:00`), []);
