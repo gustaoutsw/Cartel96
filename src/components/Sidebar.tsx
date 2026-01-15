@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 interface SidebarProps {
     perfil: { nome: string; cargo: string } | null;
+    onLogout?: () => void;
     isSimulating?: boolean;
     onToggleSimulation?: () => void;
 }
@@ -36,7 +37,7 @@ const handleLogout = async (navigate: any) => {
     }
 };
 
-export default function Sidebar({ perfil, isSimulating = false, onToggleSimulation }: SidebarProps) {
+export default function Sidebar({ perfil, onLogout, isSimulating = false, onToggleSimulation }: SidebarProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
@@ -56,7 +57,13 @@ export default function Sidebar({ perfil, isSimulating = false, onToggleSimulati
     }, []);
 
     // Internal handler to use instead of prop
-    const onDirectLogout = () => handleLogout(navigate);
+    const onDirectLogout = () => {
+        if (onLogout) {
+            onLogout();
+        } else {
+            handleLogout(navigate);
+        }
+    };
 
     const isAdmin = useMemo(() => {
         const realRole = perfil?.cargo || 'barber';

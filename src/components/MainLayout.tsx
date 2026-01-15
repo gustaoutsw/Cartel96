@@ -1,10 +1,10 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Sidebar from './Sidebar';
 
 interface MainLayoutProps {
-    children: React.ReactNode;
+    children: ReactNode;
 }
 
 export default function MainLayout({ children }: MainLayoutProps) {
