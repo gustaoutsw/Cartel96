@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { format, addDays, startOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, addMinutes, setHours, setMinutes, differenceInMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Scissors as ScissorsIcon, Clock, Filter, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Scissors as ScissorsIcon, Clock, Filter, Loader2, Trash2, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -32,9 +32,8 @@ interface Appointment {
     servico_nome: string;
     data_horario: string;
     professional?: string; // Correct DB Column
-    barbeiro_id?: any; // Deprecated, kept for safety ref
     status: 'agendado' | 'atendimento' | 'finalizado' | 'cancelado' | 'noshow';
-    valor_total: number;
+    price: number;
     duration_minutes: number;
 }
 
@@ -80,6 +79,7 @@ const AppointmentCard = React.memo(({
                 </div>
 
                 <div className={`flex items-center gap-1 mt-auto pt-1 text-[9px] font-mono opacity-80 ${appt.status === 'atendimento' ? 'text-black/60' : 'text-[#d4af37]'}`}>
+                    <span className="mr-auto font-black">R$ {appt.price}</span>
                     <Clock size={10} />
                     {format(parseISO(appt.data_horario), 'HH:mm')} -
                     {format(addMinutes(parseISO(appt.data_horario), appt.duration_minutes), 'HH:mm')}
@@ -110,24 +110,22 @@ export default function Agenda() {
         cliente_telefone: '',
         servico_id: '',
         professional: '', // UPDATED: Matches DB column
+        price: 0, // Ensure it's number
         data_horario: '',
         duration: 30 // Default duration in minutes
     });
 
     // Custom Service State
     const [customDescription, setCustomDescription] = useState('');
-    const [customPrice, setCustomPrice] = useState('');
 
     // Auth & Resources
     const { profile } = useAuth();
     const [availableServices, setAvailableServices] = useState<Service[]>([]);
-    const [barbers, setBarbers] = useState<any[]>([]);
 
     // NEW: Professional Name Filter - Defaults to match user profile if possible, else 'Todos'
     const [selectedProfessional, setSelectedProfessional] = useState<string>('Todos');
 
     const [isSaving, setIsSaving] = useState(false);
-    const [notification, setNotification] = useState<string | null>(null);
     const [nowLine, setNowLine] = useState(0);
 
     // Initial Filters & Data Load
@@ -144,12 +142,6 @@ export default function Agenda() {
                 }));
                 // Ensure unique custom field
                 setAvailableServices([...mapped, { id: 'custom', nome: 'Outro / Personalizado', preco: 0, duration: 60 }]);
-            }
-
-            // Load Barbers
-            const { data: barbersData } = await supabase.from('perfis').select('*').in('cargo', ['barbeiro', 'admin', 'dono']);
-            if (barbersData) {
-                setBarbers(barbersData);
             }
         };
         init();
@@ -211,12 +203,6 @@ export default function Agenda() {
         }
 
         if (data) {
-            // Note: We need to map 'professional' string here for the filter to work easily
-            // Logic: Try to find barber in 'barbers' state. 
-            // IMPORTANT: 'barbers' state might update after this runs initially. 
-            // But since we use 'barbers' in the filteredAppointments dependency, it's safer to resolve it within the filter or re-map.
-            // For now, let's map what we can.
-
             const mappedData: Appointment[] = data.map((d: any) => {
                 const serviceName = d.services?.name || 'Serviço';
                 const duration = d.services?.duration_minutes || 30;
@@ -236,7 +222,7 @@ export default function Agenda() {
                     data_horario: d.start_time,
                     professional: d.professional, // Map direct DB column
                     status: d.status || 'agendado',
-                    valor_total: d.price,
+                    price: d.price || 0,
                     duration_minutes: derivedDuration
                 };
             });
@@ -295,6 +281,7 @@ export default function Agenda() {
                 cliente_telefone: appt.cliente_telefone || '',
                 servico_id: appt.servico_id || availableServices.find(s => s.nome === appt.servico_nome)?.id || '',
                 professional: appt.professional || '', // Bind professional name
+                price: appt.price || 0,
                 data_horario: appt.data_horario,
                 duration: appt.duration_minutes || 30
             });
@@ -318,6 +305,7 @@ export default function Agenda() {
                 cliente_telefone: '',
                 servico_id: availableServices.length > 0 ? availableServices[0].id : '',
                 professional: preSelectedProf,
+                price: availableServices.length > 0 ? availableServices[0].preco : 0,
                 data_horario: dateObj.toISOString(),
                 duration: 30
             });
@@ -328,11 +316,13 @@ export default function Agenda() {
     const handleServiceChange = (serviceId: string) => {
         const service = availableServices.find(s => s.id === serviceId);
         const newDuration = service ? service.duration : (serviceId === 'custom' ? 60 : 30);
+        const newPrice = service ? service.preco : 0;
 
         setFormData(prev => ({
             ...prev,
             servico_id: serviceId,
-            duration: newDuration
+            duration: newDuration,
+            price: newPrice
         }));
     };
 
@@ -350,17 +340,19 @@ export default function Agenda() {
 
             if (formData.servico_id === 'custom') {
                 finalServiceLabel = customDescription || 'Serviço Extra';
-                finalPrice = parseFloat(customPrice) || 0;
             } else {
                 const selectedObj = availableServices.find(s => s.id === formData.servico_id);
                 finalServiceLabel = selectedObj ? selectedObj.nome : 'Serviço';
-                finalPrice = selectedObj ? selectedObj.preco : 0;
             }
+
+            // Price from form data overrides service default
+            // User requested: price: parseFloat(formData.price || 0)
+            finalPrice = formData.price ? parseFloat(String(formData.price)) : 0;
 
             const startTime = parseISO(formData.data_horario);
             const endTime = addMinutes(startTime, durationMinutes);
 
-            // PAYLOAD FIXED: Using 'professional' (string) instead of barber_id
+            // PAYLOAD FIXED: Using 'professional' (string) and 'price' (number)
             const payload = {
                 client_name: formData.cliente_nome.toUpperCase(),
                 client_phone: formData.cliente_telefone,
@@ -746,76 +738,85 @@ export default function Agenda() {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <input className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white" placeholder="Nome do Cliente" value={formData.cliente_nome} onChange={e => setFormData({ ...formData, cliente_nome: e.target.value })} />
-                                    <input className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white" placeholder="Telefone" value={formData.cliente_telefone} onChange={e => setFormData({ ...formData, cliente_telefone: e.target.value })} />
+                                <input className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white" placeholder="Nome do Cliente" value={formData.cliente_nome} onChange={e => setFormData({ ...formData, cliente_nome: e.target.value })} />
+                                <input className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white" placeholder="Telefone" value={formData.cliente_telefone} onChange={e => setFormData({ ...formData, cliente_telefone: e.target.value })} />
+
+                                {/* PRICE INPUT (USER REQUESTED POSITION) */}
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 text-zinc-400">Preço (R$)</label>
+                                    <input
+                                        type="number"
+                                        value={formData.price}
+                                        onChange={(e) => setFormData({ ...formData, price: e.target.value as any })}
+                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-white font-bold"
+                                        placeholder="0.00"
+                                    />
                                 </div>
 
                                 {formData.servico_id === 'custom' && (
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <input className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm" placeholder="Descrição" value={customDescription} onChange={e => setCustomDescription(e.target.value)} />
-                                        <input className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm" placeholder="Preço" type="number" value={customPrice} onChange={e => setCustomPrice(e.target.value)} />
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <input className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm" placeholder="Descrição do Serviço" value={customDescription} onChange={e => setCustomDescription(e.target.value)} />
                                     </div>
                                 )}
+                            </div>
 
-                                <div className="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 flex flex-col gap-3">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs text-zinc-500 font-bold uppercase">Início</span>
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                max="23"
-                                                className="w-16 bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-center text-white font-mono font-bold outline-none focus:border-[#d4af37]"
-                                                value={formData.data_horario ? parseISO(formData.data_horario).getHours() : 0}
-                                                onChange={e => {
-                                                    const date = parseISO(formData.data_horario);
-                                                    const newDate = setHours(date, parseInt(e.target.value) || 0);
-                                                    setFormData({ ...formData, data_horario: newDate.toISOString() });
-                                                }}
-                                            />
-                                            <span className="text-zinc-500 font-bold">:</span>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                max="59"
-                                                className="w-16 bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-center text-white font-mono font-bold outline-none focus:border-[#d4af37]"
-                                                value={formData.data_horario ? parseISO(formData.data_horario).getMinutes() : 0}
-                                                onChange={e => {
-                                                    const date = parseISO(formData.data_horario);
-                                                    const newDate = setMinutes(date, parseInt(e.target.value) || 0);
-                                                    setFormData({ ...formData, data_horario: newDate.toISOString() });
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center justify-end gap-2 text-xs">
-                                        <span className="text-zinc-500">Previsão Término:</span>
-                                        <span className="text-[#d4af37] font-mono font-bold">
-                                            {(() => {
-                                                if (!formData.data_horario) return '--:--';
-                                                return format(addMinutes(parseISO(formData.data_horario), formData.duration || 30), 'HH:mm');
-                                            })()}
-                                        </span>
+                            <div className="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 flex flex-col gap-3 mt-4">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-zinc-500 font-bold uppercase">Início</span>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="23"
+                                            className="w-16 bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-center text-white font-mono font-bold outline-none focus:border-[#d4af37]"
+                                            value={formData.data_horario ? parseISO(formData.data_horario).getHours() : 0}
+                                            onChange={e => {
+                                                const date = parseISO(formData.data_horario);
+                                                const newDate = setHours(date, parseInt(e.target.value) || 0);
+                                                setFormData({ ...formData, data_horario: newDate.toISOString() });
+                                            }}
+                                        />
+                                        <span className="text-zinc-500 font-bold">:</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="59"
+                                            className="w-16 bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-center text-white font-mono font-bold outline-none focus:border-[#d4af37]"
+                                            value={formData.data_horario ? parseISO(formData.data_horario).getMinutes() : 0}
+                                            onChange={e => {
+                                                const date = parseISO(formData.data_horario);
+                                                const newDate = setMinutes(date, parseInt(e.target.value) || 0);
+                                                setFormData({ ...formData, data_horario: newDate.toISOString() });
+                                            }}
+                                        />
                                     </div>
                                 </div>
 
-                                <div className="flex gap-2">
-                                    {formData.id && (
-                                        <button
-                                            onClick={handleDelete}
-                                            disabled={isSaving}
-                                            className="bg-red-600 text-white font-black uppercase py-4 px-6 rounded-xl hover:bg-red-700 transition-all"
-                                            type="button"
-                                        >
-                                            Excluir
-                                        </button>
-                                    )}
-                                    <button onClick={handleSaveForm} disabled={isSaving} className="flex-1 bg-[#d4af37] text-black font-black uppercase py-4 rounded-xl hover:bg-[#b5952f] transition-all">
-                                        {isSaving ? 'Salvando...' : 'Confirmar Agendamento'}
+                                <div className="flex items-center justify-end gap-2 text-xs">
+                                    <span className="text-zinc-500">Previsão Término:</span>
+                                    <span className="text-[#d4af37] font-mono font-bold">
+                                        {(() => {
+                                            if (!formData.data_horario) return '--:--';
+                                            return format(addMinutes(parseISO(formData.data_horario), formData.duration || 30), 'HH:mm');
+                                        })()}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2 mt-6">
+                                {formData.id && (
+                                    <button
+                                        onClick={handleDelete}
+                                        disabled={isSaving}
+                                        className="bg-red-600/20 text-red-500 border border-red-900/50 font-black uppercase py-4 px-6 rounded-xl hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-2"
+                                        type="button"
+                                    >
+                                        <Trash2 size={18} />
                                     </button>
-                                </div>
+                                )}
+                                <button onClick={handleSaveForm} disabled={isSaving} className="flex-1 bg-[#d4af37] text-black font-black uppercase py-4 rounded-xl hover:bg-[#b5952f] transition-all">
+                                    {isSaving ? 'Salvando...' : 'Confirmar Agendamento'}
+                                </button>
                             </div>
                         </motion.div>
                     </div>
