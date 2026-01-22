@@ -39,3 +39,15 @@
     background-color: #000000 !important;
   }
 }
+
+/* Remove setas de input number (Chrome, Safari, Edge, Opera) */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Remove setas de input number (Firefox) */
+input[type=number] {
+  -moz-appearance: textfield;
+}

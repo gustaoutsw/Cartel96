@@ -1,29 +1,29 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-
-import { format, addDays, startOfWeek, isSameDay, parseISO, isSameMonth, startOfMonth, endOfMonth } from 'date-fns';
+import { format, addDays, startOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, addMinutes, setHours, setMinutes, differenceInMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Scissors as ScissorsIcon, Clock, X, Trash2, LogOut, MessageCircle, CalendarClock, Check, Filter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Scissors as ScissorsIcon, Clock, Filter, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { motion } from 'framer-motion';
-
-
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 
-// NOVA TABELA DE PREÇOS - CARTEL 96
-// NOVA TABELA DE PREÇOS - CARTEL 96
-// NOTE: These IDs are used for fallback/display only. 
-// REAL UUIDs come from the database now.
-const HARDCODED_SERVICES_FALLBACK = [
-    { id: 'degrade', nome: 'Corte Degradê', preco: 45, duration: 45 },
-    { id: 'tesoura', nome: 'Corte na Tesoura', preco: 45, duration: 45 },
-    { id: 'social', nome: 'Corte Social', preco: 40, duration: 30 },
-    { id: 'raspado', nome: 'Raspado (Máquina)', preco: 30, duration: 30 },
-    { id: 'barba', nome: 'Barba', preco: 40, duration: 30 },
-    { id: 'custom', nome: 'Outro / Personalizado (Digitar)', preco: 0, duration: 60 }
-];
+// --- CONSTANTS ---
+const START_HOUR = 8;
+const END_HOUR = 23;
+const PIXELS_PER_HOUR = 80;
+const GRID_HEIGHT = (END_HOUR - START_HOUR) * PIXELS_PER_HOUR;
+
+// Helper Normalizer
+const normalize = (str: any) => str ? str.toString().toLowerCase().trim() : "";
 
 // --- TYPES ---
+interface Service {
+    id: string;
+    nome: string;
+    preco: number;
+    duration: number; // minutes
+}
+
 interface Appointment {
     id: any;
     cliente_nome: string;
@@ -31,110 +31,59 @@ interface Appointment {
     servico_id?: any;
     servico_nome: string;
     data_horario: string;
-    barbeiro_id: any;
-    barbeiro_nome?: string; // Optional for multi-view
+    professional?: string; // Correct DB Column
+    barbeiro_id?: any; // Deprecated, kept for safety ref
     status: 'agendado' | 'atendimento' | 'finalizado' | 'cancelado' | 'noshow';
     valor_total: number;
+    duration_minutes: number;
 }
 
 // --- MEMOIZED COMPONENTS ---
-
-const TimeSlot = React.memo(({
-    time,
-    date,
-    children,
-    onDrop,
-    onClick
-}: {
-    time: string;
-    date: Date;
-    children?: React.ReactNode;
-    onDrop: (date: Date, time: string, droppedId: string) => void;
-    onClick: () => void;
-}) => {
-    const [isOver, setIsOver] = useState(false);
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsOver(true);
-    };
-
-    const handleDragLeave = () => setIsOver(false);
-
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsOver(false);
-        const droppedId = e.dataTransfer.getData("text/plain");
-        if (droppedId) {
-            onDrop(date, time, droppedId);
-        }
-    };
-
-    return (
-        <div
-            // GRID FIX: Added cursor-pointer relative z-10
-            className={`relative transition-all duration-300 border-b border-zinc-900/40 cursor-pointer z-10 ${isOver ? 'bg-[#d4af37]/20 shadow-[inset_0_0_20px_rgba(212,175,55,0.3)]' : 'hover:bg-zinc-900/20'}`}
-            style={{ minHeight: '100px' }}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={onClick}
-        >
-            {children}
-            {isOver && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-[#d4af37] font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
-                        SOLTAR PARA REAGENDAR
-                    </div>
-                </div>
-            )}
-
-
-
-        </div>
-    );
-});
 
 const AppointmentCard = React.memo(({
     appt,
     onClick,
     onDragStart,
-    className,
-    showBarber,
-    compact // New Prop
+    style,
+    className
 }: {
     appt: Appointment;
     onClick: (e: React.MouseEvent) => void;
     onDragStart: (e: React.DragEvent, id: any) => void;
+    style?: React.CSSProperties;
     className?: string;
-    showBarber?: boolean;
-    compact?: boolean;
 }) => {
     return (
         <motion.div
-            layoutId={appt.id}
+            layoutId={appt.id.toString()}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className={`z-10 cursor-grab active:cursor-grabbing ${className || 'absolute inset-2'}`}
+            className={`cursor-pointer absolute z-10 hover:z-20 transition-all ${className}`}
+            style={style}
             draggable
             onDragStart={(e) => onDragStart(e as unknown as React.DragEvent, appt.id)}
             onClick={onClick}
-            whileHover={{ scale: 1.02, zIndex: 20 }}
+            whileHover={{ scale: 1.02 }}
             whileDrag={{ opacity: 0.5, scale: 0.95 }}
         >
-            <div className={`h-full w-full rounded-2xl ${compact ? 'p-2' : 'p-5 md:p-4'} flex flex-col justify-center border shadow-xl backdrop-blur-md transition-all ${appt.status === 'atendimento' ? 'bg-[#d4af37] text-black border-[#d4af37]' : 'bg-zinc-950 text-stone-200 border-zinc-800 shadow-[0_4px_20px_rgba(0,0,0,0.5)]'}`}>
-                <div className="flex justify-between items-start">
-                    <div className={`${compact ? 'text-[10px]' : 'text-base md:text-sm'} font-black uppercase truncate tracking-tight`}>{appt.cliente_nome}</div>
-                    {appt.status === 'agendado' && <div className="w-2 h-2 rounded-full bg-[#d4af37] animate-pulse" />}
+            <div className={`h-full w-full rounded-l-md rounded-r-xl p-2 flex flex-col justify-start shadow-xl backdrop-blur-md border-l-4 overflow-hidden relative ${appt.status === 'atendimento' ? 'bg-[#d4af37] text-black border-black' : 'bg-[#d4af37]/20 border-[#d4af37] text-zinc-100'}`} style={{ boxSizing: 'border-box' }}>
+                {/* Background shimmer effect */}
+                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
+
+                <div className="flex justify-between items-start relative z-10">
+                    <div className="text-[10px] md:text-xs font-black uppercase truncate tracking-tight drop-shadow-md leading-tight">{appt.cliente_nome}</div>
+                    {appt.status === 'agendado' && <div className="w-1.5 h-1.5 rounded-full bg-[#d4af37] animate-pulse shrink-0 ml-1 shadow-[0_0_10px_#d4af37]" />}
                 </div>
-                <div className={`${compact ? 'text-[9px]' : 'text-[10px]'} opacity-60 font-bold uppercase flex items-center gap-2 mt-1`}>
-                    {!compact && <ScissorsIcon size={12} />} {appt.servico_nome}
+
+                <div className={`text-[9px] font-bold uppercase flex items-center gap-1 mt-0.5 truncate opacity-90 ${appt.status === 'atendimento' ? 'text-black/70' : 'text-zinc-400'}`}>
+                    <ScissorsIcon size={10} /> {appt.servico_nome}
                 </div>
-                {showBarber && appt.barbeiro_nome && !compact && (
-                    <div className="mt-2 pt-2 border-t border-white/10 text-[9px] font-black uppercase tracking-wider opacity-80 text-[#d4af37]">
-                        {appt.barbeiro_nome}
-                    </div>
-                )}
+
+                <div className={`flex items-center gap-1 mt-auto pt-1 text-[9px] font-mono opacity-80 ${appt.status === 'atendimento' ? 'text-black/60' : 'text-[#d4af37]'}`}>
+                    <Clock size={10} />
+                    {format(parseISO(appt.data_horario), 'HH:mm')} -
+                    {format(addMinutes(parseISO(appt.data_horario), appt.duration_minutes), 'HH:mm')}
+                </div>
             </div>
         </motion.div>
     );
@@ -145,260 +94,260 @@ const AppointmentCard = React.memo(({
 export default function Agenda() {
     const navigate = useNavigate();
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
-    const [isFilterOpen, setIsFilterOpen] = useState(false);
-    const [appointments, setAppointments] = useState<Appointment[]>([]);
 
-    const [activeManagement, setActiveManagement] = useState<Appointment | null>(null);
-    const [selectedSlotData, setSelectedSlotData] = useState<Appointment[] | null>(null);
+    // State ViewMode
+    const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
+
+    const [appointments, setAppointments] = useState<Appointment[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
     const [isFormOpen, setIsFormOpen] = useState(false);
+
+    // Form Data
     const [formData, setFormData] = useState({
         id: null as any,
         cliente_nome: '',
         cliente_telefone: '',
         servico_id: '',
-        barbeiro_id: '',
-        data_horario: ''
+        professional: '', // UPDATED: Matches DB column
+        data_horario: '',
+        duration: 30 // Default duration in minutes
     });
+
     // Custom Service State
     const [customDescription, setCustomDescription] = useState('');
     const [customPrice, setCustomPrice] = useState('');
-    // Auth
+
+    // Auth & Resources
     const { profile } = useAuth();
-    const [availableServices, setAvailableServices] = useState<any[]>([]);
+    const [availableServices, setAvailableServices] = useState<Service[]>([]);
     const [barbers, setBarbers] = useState<any[]>([]);
 
-    const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
-    const [isSaving, setIsSaving] = useState(false);
+    // NEW: Professional Name Filter - Defaults to match user profile if possible, else 'Todos'
+    const [selectedProfessional, setSelectedProfessional] = useState<string>('Todos');
 
-    // Initialize Filter based on Role
+    const [isSaving, setIsSaving] = useState(false);
+    const [notification, setNotification] = useState<string | null>(null);
+    const [nowLine, setNowLine] = useState(0);
+
+    // Initial Filters & Data Load
+    useEffect(() => {
+        const init = async () => {
+            // Load Services
+            const { data: servicesData } = await supabase.from('services').select('*').order('created_at', { ascending: false });
+            if (servicesData) {
+                const mapped = servicesData.map((s: any) => ({
+                    id: s.id,
+                    nome: s.name,
+                    preco: s.price,
+                    duration: s.duration_minutes
+                }));
+                // Ensure unique custom field
+                setAvailableServices([...mapped, { id: 'custom', nome: 'Outro / Personalizado', preco: 0, duration: 60 }]);
+            }
+
+            // Load Barbers
+            const { data: barbersData } = await supabase.from('perfis').select('*').in('cargo', ['barbeiro', 'admin', 'dono']);
+            if (barbersData) {
+                setBarbers(barbersData);
+            }
+        };
+        init();
+    }, []);
+
+    // Set initial filter based on profile
     useEffect(() => {
         if (profile) {
-            if (profile?.cargo === 'barbeiro') {
-                setSelectedBarberId(profile.id);
-            }
-            // Owners default to 'all' or keep existing selection
+            if (profile.nome.includes('Luis')) setSelectedProfessional('Luis');
+            else if (profile.nome.includes('Bruna')) setSelectedProfessional('Bruna');
+            else if (profile.nome.includes('William')) setSelectedProfessional('William');
+            else if (profile.nome.includes('Antonio')) setSelectedProfessional('Antonio');
         }
     }, [profile]);
 
-    // Initial Data Fetch
+    // Update "Current Time" Line Position
+    useEffect(() => {
+        const updateLine = () => {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            if (hours >= START_HOUR && hours < END_HOUR) {
+                const minutesFromStart = (hours - START_HOUR) * 60 + minutes;
+                setNowLine((minutesFromStart / 60) * PIXELS_PER_HOUR);
+            } else {
+                setNowLine(-1);
+            }
+        };
+        updateLine();
+        const interval = setInterval(updateLine, 60000); // Every minute
+        return () => clearInterval(interval);
+    }, []);
+
+    // Data Fetching
     const fetchData = useCallback(async (date: Date) => {
+        setIsLoading(true);
         const start = startOfMonth(date).toISOString();
         const end = endOfMonth(date).toISOString();
 
-        console.log("Fetching for Barber:", selectedBarberId);
-
-        // 1. Fetch from Supabase
+        // Query 'appointments'
         let query = supabase
-            .from('agendamentos')
+            .from('appointments')
             .select(`
                 *,
-                servico_nome,
-                servicos (
-                    *
+                services (
+                    name,
+                    duration_minutes
                 )
             `)
-            .gte('data_horario', start)
-            .lte('data_horario', end);
-
-        // Apply Filter if not 'all'
-        // FIX: Ensure filter is applied if ID is valid and not 'all'
-        if (selectedBarberId && selectedBarberId !== 'all') {
-            console.log("🔍 Filtering by Barber ID:", selectedBarberId);
-            query = query.eq('barbeiro_id', selectedBarberId);
-        }
+            .gte('start_time', start)
+            .lte('start_time', end);
 
         const { data, error } = await query;
 
-        let mergedAppointments: Appointment[] = [];
-
-        // 2. Load from LocalStorage (Source of Truth for Demo)
-        const localData = localStorage.getItem('demo_appointments');
-        const localAppointments: Appointment[] = localData ? JSON.parse(localData) : [];
-
-        if (!error && data) {
-            console.log("🐛 DEBUG DATA SOURCE: Data from Supabase:", data);
-            const serverAppointments = data.map((d: any) => {
-                // LÓGICA DE PRIORIDADE DE EXIBIÇÃO:
-                // 1º: Tenta ler o nome gravado no banco (para personalizados e novos agendamentos e históricos)
-                // 2º: Se não tiver, tenta achar pelo ID na lista fixa (para compatibilidade antiga ou fallback)
-                // 3º: Se falhar tudo, mostra um texto padrão 'Serviço Extra'.
-
-                const dbName = d.servico_nome;
-                const relationName = d.servicos?.nome || d.servicos?.titulo || d.servicos?.label || d.servicos?.name;
-                // Check both servico_id and servico for the ID
-                const staticId = d.servico_id || d.servico;
-                const staticName = HARDCODED_SERVICES_FALLBACK.find(s => s.id === staticId)?.nome;
-
-                const serviceName = dbName || relationName || staticName || 'Serviço Extra';
-
-                return {
-                    ...d,
-                    servico_nome: serviceName
-                };
-            });
-
-            // Merge Strategy: Keep local items that are NOT in server (by ID) + Server items
-            mergedAppointments = [
-                ...serverAppointments,
-                ...localAppointments.filter(local => !serverAppointments.find((server: any) => server.id === local.id))
-            ];
-        } else {
+        if (error) {
             console.error("Error fetching appointments:", error);
-            // Fallback
-            mergedAppointments = localAppointments;
+            setIsLoading(false);
+            return;
         }
 
-        setAppointments(mergedAppointments);
-    }, [selectedBarberId]);
+        if (data) {
+            // Note: We need to map 'professional' string here for the filter to work easily
+            // Logic: Try to find barber in 'barbers' state. 
+            // IMPORTANT: 'barbers' state might update after this runs initially. 
+            // But since we use 'barbers' in the filteredAppointments dependency, it's safer to resolve it within the filter or re-map.
+            // For now, let's map what we can.
+
+            const mappedData: Appointment[] = data.map((d: any) => {
+                const serviceName = d.services?.name || 'Serviço';
+                const duration = d.services?.duration_minutes || 30;
+
+                // Calculate duration from start/end if available, else fallback
+                let derivedDuration = duration;
+                if (d.start_time && d.end_time) {
+                    derivedDuration = differenceInMinutes(parseISO(d.end_time), parseISO(d.start_time));
+                }
+
+                return {
+                    id: d.id,
+                    cliente_nome: d.client_name || 'Anônimo',
+                    cliente_telefone: d.client_phone,
+                    servico_id: d.service_id,
+                    servico_nome: serviceName,
+                    data_horario: d.start_time,
+                    professional: d.professional, // Map direct DB column
+                    status: d.status || 'agendado',
+                    valor_total: d.price,
+                    duration_minutes: derivedDuration
+                };
+            });
+            setAppointments(mappedData);
+        }
+        setIsLoading(false);
+    }, []);
 
     useEffect(() => {
         fetchData(currentDate);
-    }, [currentDate.getMonth(), currentDate.getFullYear(), fetchData, selectedBarberId]);
+    }, [currentDate.getMonth(), currentDate.getFullYear(), fetchData]);
 
 
+    // --- FILTER LOGIC (STRICT) ---
+    const filteredAppointments = useMemo(() => {
 
+        return appointments.filter(app => {
+            if (selectedProfessional === 'Todos') return true;
 
-    useEffect(() => {
-        const fetchServices = async () => {
-            const { data, error } = await supabase.from('servicos').select('*');
-            if (data && data.length > 0) {
-                console.log("📦 LOADED SERVICES (DB):", data);
-                // Append 'custom' option if needed, using a special ID key for custom behavior logic
-                // For now, let's assume 'custom' needs to be handled.
-                // If the DB doesn't have a 'custom' entry, we manually add a UI-only option.
-                // We'll give it a fake UUID-like string or handle 'custom' specifically in submit.
+            // Normalize and compare direct field
+            const appProf = normalize(app.professional);
+            const selProf = normalize(selectedProfessional);
 
-                // Check if 'custom' is in DB or we need to append
-                setAvailableServices([...data, { id: 'custom', nome: 'Outro / Personalizado', preco: 0 }]);
-            } else {
-                // Fallback if DB is empty
-                console.log("⚠️ No services in DB, using fallback");
-                setAvailableServices(HARDCODED_SERVICES_FALLBACK);
-            }
-            if (error) console.error("Error fetching services:", error);
-        };
-        fetchServices();
-
-        const fetchBarbers = async () => {
-            const { data } = await supabase.from('perfis').select('*').in('cargo', ['barbeiro', 'admin', 'dono']); // Fetch all who can receive appointments
-            if (data) {
-                console.log("✂️ LOADED BARBERS (DB):", data);
-                setBarbers(data);
-            }
-        };
-        fetchBarbers();
-    }, []);
-
-    // Helpers
-    const showToast = (msg: string) => {
-        // setNotification(msg);
-        console.log("Toast:", msg);
-        // setTimeout(() => setNotification(null), 3000);
-    };
-
-    const timeSlots = useMemo(() => Array.from({ length: 14 }, (_, i) => `${String(i + 9).padStart(2, '0')}:00`), []);
-
-    // --- ACTIONS ---
-
-    const handleDragStart = useCallback((e: React.DragEvent, id: any) => {
-        e.dataTransfer.setData("text/plain", id);
-        e.dataTransfer.effectAllowed = "move";
-    }, []);
-
-    const processDrop = useCallback(async (date: Date, time: string, droppedId: string) => {
-        const appt = appointments.find(a => a.id == droppedId);
-        if (!appt) return;
-
-        const [hour, minute] = time.split(':').map(Number);
-        const newDate = new Date(date);
-        newDate.setHours(hour, minute, 0, 0);
-        const isoDate = newDate.toISOString();
-
-        // Optimistic Update
-        const updatedAppointments = appointments.map(a => a.id == droppedId ? { ...a, data_horario: isoDate } : a);
-        setAppointments(updatedAppointments);
-        localStorage.setItem('demo_appointments', JSON.stringify(updatedAppointments));
-        showToast("Horário atualizado com sucesso");
-        await supabase.from('agendamentos').update({ data_horario: isoDate }).eq('id', droppedId);
-    }, [appointments]);
-
-    const handleDelete = async (id: any) => {
-        const updated = appointments.filter(a => a.id !== id);
-        setAppointments(updated);
-        localStorage.setItem('demo_appointments', JSON.stringify(updated));
-        setActiveManagement(null);
-        showToast("Agendamento excluído");
-        await supabase.from('agendamentos').delete().eq('id', id);
-    };
-
-    const handleEdit = (appt: Appointment) => {
-        // 1. Defina os dados do formulário
-        setFormData({
-            id: appt.id,
-            cliente_nome: appt.cliente_nome,
-            cliente_telefone: appt.cliente_telefone || '',
-            servico_id: appt.servico_id || availableServices.find(s => s.nome === appt.servico_nome)?.id || '',
-            barbeiro_id: appt.barbeiro_id,
-            data_horario: appt.data_horario
+            return appProf === selProf;
         });
+    }, [appointments, selectedProfessional]);
 
-        // 2. Feche o Modal de Detalhes
-        setActiveManagement(null);
-        setSelectedSlotData(null); // Fecha também o modal de lista se estiver aberto
 
-        // 3. Abra o Formulário Principal (Drawer/Modal)
-        setIsFormOpen(true);
+    // --- HANDLERS ---
 
-        showToast("📅 Editando Agendamento");
+    const handleGridClick = (e: React.MouseEvent<HTMLDivElement>, dayDate?: Date) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const ClickY = e.clientY - rect.top;
+
+        const hoursFromStart = ClickY / PIXELS_PER_HOUR;
+        const totalMinutes = hoursFromStart * 60;
+
+        const clickedHour = START_HOUR + Math.floor(totalMinutes / 60);
+        const clickedMinutes = Math.floor(totalMinutes % 60);
+
+        const roundedMinutes = Math.round(clickedMinutes / 15) * 15;
+
+        // If dayDate passed (Week View), use it. Else use currentDate (Day View).
+        const targetDate = dayDate ? new Date(dayDate) : new Date(currentDate);
+        targetDate.setHours(clickedHour, roundedMinutes, 0, 0);
+
+        handleOpenForm(targetDate);
     };
 
+    const handleOpenForm = (dateObj: Date, appt?: Appointment) => {
+        if (appt) {
+            // EDIT MODE
+            setFormData({
+                id: appt.id,
+                cliente_nome: appt.cliente_nome,
+                cliente_telefone: appt.cliente_telefone || '',
+                servico_id: appt.servico_id || availableServices.find(s => s.nome === appt.servico_nome)?.id || '',
+                professional: appt.professional || '', // Bind professional name
+                data_horario: appt.data_horario,
+                duration: appt.duration_minutes || 30
+            });
+        } else {
+            // NEW MODE
+            // Pre-select professional name
+            let preSelectedProf = '';
+            if (selectedProfessional !== 'Todos') {
+                preSelectedProf = selectedProfessional;
+            } else if (profile?.nome) {
+                // Try to match profile name to one of the options
+                if (normalize(profile.nome).includes('luis')) preSelectedProf = 'Luis';
+                if (normalize(profile.nome).includes('bruna')) preSelectedProf = 'Bruna';
+                if (normalize(profile.nome).includes('william')) preSelectedProf = 'William';
+                if (normalize(profile.nome).includes('antonio')) preSelectedProf = 'Antonio';
+            }
 
-
-
-
-    const handleSlotClick = useCallback((date: Date, time: string) => {
-        const [hour, minute] = time.split(':').map(Number);
-        const newDate = new Date(date);
-        newDate.setHours(hour, minute, 0, 0);
-
-        // Conflict Check
-        const myConflict = appointments.find(a =>
-            a.barbeiro_id === profile?.id &&
-            isSameDay(parseISO(a.data_horario), newDate) &&
-            format(parseISO(a.data_horario), "HH:mm") === time
-        );
-
-        if (myConflict) {
-            showToast("⚠️ Você já tem agendamento neste horário.");
-            return;
+            setFormData({
+                id: null,
+                cliente_nome: '',
+                cliente_telefone: '',
+                servico_id: availableServices.length > 0 ? availableServices[0].id : '',
+                professional: preSelectedProf,
+                data_horario: dateObj.toISOString(),
+                duration: 30
+            });
         }
-
-        // Open Form
-        setFormData({
-            id: null,
-            cliente_nome: '',
-            cliente_telefone: '',
-            servico_id: availableServices[0]?.id || '',
-            barbeiro_id: profile?.id,
-            data_horario: newDate.toISOString()
-        });
         setIsFormOpen(true);
-    }, [appointments, profile, availableServices]);
+    };
+
+    const handleServiceChange = (serviceId: string) => {
+        const service = availableServices.find(s => s.id === serviceId);
+        const newDuration = service ? service.duration : (serviceId === 'custom' ? 60 : 30);
+
+        setFormData(prev => ({
+            ...prev,
+            servico_id: serviceId,
+            duration: newDuration
+        }));
+    };
 
     const handleSaveForm = async () => {
-        if (!formData.cliente_nome || !formData.cliente_telefone || !formData.servico_id) {
-            alert("Preencha todos os campos obrigatórios.");
+        if (!formData.cliente_nome || !formData.servico_id || !formData.professional) {
+            alert("Preencha nome, serviço e escolha o profissional.");
             return;
         }
-
         setIsSaving(true);
-        showToast(formData.id ? "Atualizando..." : "Salvando...");
-
         try {
-            // 1. Determina o valor e nome
             let finalServiceLabel = '';
             let finalPrice = 0;
+            // Use manual duration
+            let durationMinutes = parseInt(String(formData.duration)) || 30;
+
             if (formData.servico_id === 'custom') {
                 finalServiceLabel = customDescription || 'Serviço Extra';
                 finalPrice = parseFloat(customPrice) || 0;
@@ -408,727 +357,470 @@ export default function Agenda() {
                 finalPrice = selectedObj ? selectedObj.preco : 0;
             }
 
+            const startTime = parseISO(formData.data_horario);
+            const endTime = addMinutes(startTime, durationMinutes);
+
+            // PAYLOAD FIXED: Using 'professional' (string) instead of barber_id
             const payload = {
-                data_horario: formData.data_horario,
-                barbeiro_id: formData.barbeiro_id,
-                cliente_nome: formData.cliente_nome.toUpperCase(),
-                cliente_telefone: formData.cliente_telefone,
-                servico_id: formData.servico_id === 'custom' ? null : formData.servico_id,
-                servico_nome: finalServiceLabel,
-                preco: finalPrice, // Usando coluna 'preco' conforme solicitado
-                status: 'agendado'
+                client_name: formData.cliente_nome.toUpperCase(),
+                client_phone: formData.cliente_telefone,
+                service_id: formData.servico_id === 'custom' ? null : formData.servico_id,
+                start_time: startTime.toISOString(),
+                end_time: endTime.toISOString(),
+                price: finalPrice,
+                status: 'agendado',
+                professional: formData.professional
             };
 
-            // IF CUSTOM, we might need to handle differently depending on DB schema. 
-            // Attempting to send custom name/price. If DB relies on servico_id FK, this might need schema adjustment.
-            // For now, following user instruction to save with customDescription.
-
-            let result;
+            let resultError = null;
             if (formData.id) {
-                // UPDATE
-                result = await supabase.from('agendamentos').update(payload).eq('id', formData.id).select();
+                const { error } = await supabase.from('appointments').update(payload).eq('id', formData.id);
+                resultError = error;
             } else {
-                // INSERT
-                result = await supabase.from('agendamentos').insert(payload).select();
+                const { error } = await supabase.from('appointments').insert([payload]);
+                resultError = error;
             }
 
-            const { error } = result;
+            if (resultError) throw resultError;
 
-            if (error) {
-                console.error("❌ SUPABASE ERROR:", error);
-                alert(`Erro ao salvar: ${error.message}`);
-            } else {
-                console.log("✅ SUCCESS");
-                showToast(formData.id ? "Agendamento Atualizado!" : "Agendamento Criado!");
-                fetchData(currentDate);
-                setIsFormOpen(false);
+            if (formData.cliente_telefone) {
+                await supabase.from('clientes').upsert(
+                    { nome: formData.cliente_nome, telefone: formData.cliente_telefone },
+                    { onConflict: 'telefone' }
+                );
             }
-        } catch (err) {
-            console.error("error", err);
-            alert("Erro ao salvar.");
+
+            // Simple Alert or Toast replacement
+            alert("Agendamento salvo!");
+            fetchData(currentDate);
+            setIsFormOpen(false);
+
+        } catch (err: any) {
+            console.error("Erro:", err);
+            alert("ERRO: " + (err.message || JSON.stringify(err)));
         } finally {
             setIsSaving(false);
         }
     };
 
-    const handleFabClick = useCallback(() => {
-        const now = new Date();
-        const currentHour = now.getHours();
-        // Default to next full hour
-        const nextTime = `${String(currentHour + 1).padStart(2, '0')}:00`;
-        handleSlotClick(currentDate, nextTime);
-    }, [currentDate, handleSlotClick]);
+    const handleDelete = async () => {
+        if (!formData.id) return;
+        if (!confirm("Tem certeza que deseja excluir este agendamento?")) return;
 
-    // LISTEN FOR BOTTOM NAV ACTION
-    useEffect(() => {
-        const handleNewAppointment = () => {
-            handleFabClick();
-        };
-        window.addEventListener('open-new-appointment', handleNewAppointment);
-        return () => window.removeEventListener('open-new-appointment', handleNewAppointment);
-    }, [handleFabClick]);
+        setIsSaving(true);
+        try {
+            const { error } = await supabase.from('appointments').delete().eq('id', formData.id);
+            if (error) throw error;
 
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
-        navigate('/login');
+            alert("Agendamento excluído.");
+            fetchData(currentDate);
+            setIsFormOpen(false);
+        } catch (err: any) {
+            console.error("Erro ao excluir:", err);
+            alert("Erro ao excluir agendamento.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
+    const processDrop = async (e: React.DragEvent, targetDate?: Date) => {
+        e.preventDefault();
+        const droppedId = e.dataTransfer.getData("text/plain");
+        if (!droppedId) return;
+
+        const originalAppt = appointments.find(a => a.id == droppedId);
+        if (!originalAppt) return;
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        const scrollTop = e.currentTarget.scrollTop || 0;
+        const ClientY = e.clientY - rect.top + scrollTop;
+        const hoursFromStart = ClientY / PIXELS_PER_HOUR;
+        const totalMinutes = hoursFromStart * 60;
+        const newHour = START_HOUR + Math.floor(totalMinutes / 60);
+        const newMinute = Math.round((totalMinutes % 60) / 15) * 15;
+
+        const newStartTime = targetDate ? new Date(targetDate) : new Date(currentDate);
+        newStartTime.setHours(newHour, newMinute, 0, 0);
+        const newEndTime = addMinutes(newStartTime, originalAppt.duration_minutes);
+
+        // Optimistic Update
+        setAppointments(prev => prev.map(a => a.id == droppedId ? { ...a, data_horario: newStartTime.toISOString() } : a));
+
+        const { error } = await supabase.from('appointments').update({
+            start_time: newStartTime.toISOString(),
+            end_time: newEndTime.toISOString()
+        }).eq('id', droppedId);
+
+        if (error) {
+            alert("Erro ao mover.");
+            fetchData(currentDate);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+    const handleDragStart = (e: React.DragEvent, id: any) => {
+        e.dataTransfer.setData("text/plain", id);
+    };
+
+
+    // Generate Week Days
+    const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
+
     return (
-        <div className={`flex flex-col min-h-screen relative overflow-hidden transition-opacity duration-200 ${isSaving ? 'opacity-50 pointer-events-none cursor-wait' : ''}`}>
-
-
-
-            <header className="sticky top-0 px-3 md:px-8 py-2 md:py-6 flex flex-col md:flex-row items-center md:justify-between gap-3 md:gap-0 shrink-0 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 z-50">
-                <div>
-                    <h1 className="text-lg md:text-2xl font-serif font-black text-white uppercase tracking-tighter flex items-center gap-3">
-                        CARTEL 96 <span className="hidden md:inline text-[#d4af37] opacity-60 text-xs font-sans tracking-[0.3em] font-normal border-l border-zinc-800 pl-3">GESTÃO</span>
-                    </h1>
-                </div>
-                <div className="flex gap-2 md:gap-4">
-                    <div className="flex bg-zinc-900/50 rounded-lg md:rounded-xl p-1 border border-zinc-800 items-center">
-                        <button onClick={handleLogout} className="md:hidden p-4 text-red-600 hover:text-red-500 transition-colors flex items-center justify-center border-r border-zinc-800 mr-1">
-                            <LogOut size={20} />
-                        </button>
-                        <button onClick={() => setCurrentDate(d => addDays(d, -1))} className="p-4 md:p-4 hover:text-white text-zinc-500 transition-colors bg-transparent"><ChevronLeft size={16} className="md:w-5 md:h-5" /></button>
-                        <button onClick={() => setCurrentDate(new Date())} className="px-6 md:px-6 py-4 md:py-3 text-sm md:text-xs font-black uppercase text-zinc-400 hover:text-[#d4af37] transition-colors tracking-widest">HOJE</button>
-                        <button onClick={() => setCurrentDate(d => addDays(d, 1))} className="p-4 md:p-4 hover:text-white text-zinc-500 transition-colors bg-transparent"><ChevronRight size={16} className="md:w-5 md:h-5" /></button>
-                    </div>
-                    {/* BARBER FILTER - VISIBLE ONLY TO OWNER */}
-                    {(profile?.cargo === 'dono' || profile?.cargo === 'admin') && (
-                        <div className="hidden md:flex bg-zinc-900/50 rounded-xl p-1 border border-zinc-800 items-center px-2">
-                            <select
-                                value={selectedBarberId}
-                                onChange={(e) => setSelectedBarberId(e.target.value)}
-                                className="bg-transparent text-[10px] font-black uppercase text-zinc-400 focus:text-[#d4af37] outline-none cursor-pointer tracking-widest [&>option]:bg-zinc-900"
-                            >
-                                <option value="all">Todos Profissionais</option>
-                                {barbers.map(b => (
-                                    <option key={b.id} value={b.id}>{b.nome}</option>
-                                ))}
-                            </select>
+        <div className="flex flex-col min-h-screen relative overflow-hidden bg-zinc-950">
+            {/* --- HEADER --- */}
+            <header className="sticky top-0 px-4 py-3 flex flex-col md:flex-row items-center justify-between bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 z-30 gap-4 md:gap-0">
+                <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-start">
+                    <h1 className="text-xl font-serif font-black text-white uppercase tracking-tighter md:hidden">CARTEL 96</h1>
+                    <div className="h-4 w-[1px] bg-zinc-800 mx-2 md:hidden"></div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => setCurrentDate(d => addDays(d, viewMode === 'week' ? -7 : -1))} className="p-2 hover:bg-zinc-900 rounded-full text-zinc-400"><ChevronLeft size={16} /></button>
+                        <div className="flex items-baseline gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => document.getElementById('date-picker')?.showPicker()}>
+                            <span className="text-lg font-bold text-white uppercase whitespace-nowrap">
+                                {viewMode === 'day'
+                                    ? format(currentDate, "dd 'de' MMM", { locale: ptBR })
+                                    : `Semana ${format(weekStart, "dd", { locale: ptBR })} - ${format(addDays(weekStart, 6), "dd MMM", { locale: ptBR })}`
+                                }
+                            </span>
+                            <input id="date-picker" type="date" className="w-0 h-0 opacity-0 absolute" onChange={(e) => setCurrentDate(parseISO(e.target.value))} />
                         </div>
-                    )}
-                    <div className="flex bg-zinc-900/50 rounded-lg md:rounded-xl p-1 border border-zinc-800">
-                        <button onClick={() => setViewMode('day')} className={`h-14 md:h-auto px-4 md:px-6 py-0 md:py-3 rounded-md md:rounded-lg text-sm md:text-xs font-black uppercase tracking-widest transition-all hover:bg-[#d4af37]/20 ${viewMode === 'day' ? 'bg-[#d4af37] text-black shadow-lg scale-105 ring-2 ring-[#d4af37] ring-offset-2 ring-offset-black' : 'text-zinc-500 hover:text-white'}`}>DIA</button>
-                        <button onClick={() => setViewMode('week')} className={`h-14 md:h-auto px-4 md:px-6 py-0 md:py-3 rounded-md md:rounded-lg text-sm md:text-xs font-black uppercase tracking-widest transition-all hover:bg-[#d4af37]/20 ${viewMode === 'week' ? 'bg-[#d4af37] text-black shadow-lg scale-105 ring-2 ring-[#d4af37] ring-offset-2 ring-offset-black' : 'text-zinc-500 hover:text-white'}`}>SEM</button>
-                        <button onClick={() => setViewMode('month')} className={`hidden md:block px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all hover:bg-[#d4af37]/20 ${viewMode === 'month' ? 'bg-[#d4af37] text-black shadow-lg scale-105 ring-2 ring-[#d4af37] ring-offset-2 ring-offset-black' : 'text-zinc-500 hover:text-white'}`}>MÊS</button>
+                        <button onClick={() => setCurrentDate(d => addDays(d, viewMode === 'week' ? 7 : 1))} className="p-2 hover:bg-zinc-900 rounded-full text-zinc-400"><ChevronRight size={16} /></button>
                     </div>
                 </div>
 
-                {/* GLOBAL TEAM FILTER BUTTON */}
-                <div className="w-full md:w-auto mt-3 md:mt-0 flex justify-center">
-                    <button
-                        onClick={() => setIsFilterOpen(true)}
-                        className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 hover:border-[#d4af37] px-4 py-2 rounded-full transition-all active:scale-95 group"
-                    >
-                        <Filter size={16} className="text-zinc-500 group-hover:text-[#d4af37]" />
-                        <span className="text-xs text-zinc-300 font-bold uppercase tracking-wide">
-                            Exibindo: <span className="text-white">{selectedBarberId === 'all' ? 'Todos' : barbers.find(b => b.id === selectedBarberId)?.nome.split(' ')[0]}</span>
-                        </span>
-                        <ChevronRight size={14} className="text-zinc-600 rotate-90" />
+                <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+
+                    {/* PROFESSIONAL SELECTOR (FIXED) */}
+                    <div className="relative flex-shrink-0">
+                        <select
+                            value={selectedProfessional}
+                            onChange={(e) => setSelectedProfessional(e.target.value)}
+                            className="appearance-none bg-zinc-900 border border-zinc-800 rounded-lg py-1.5 pl-4 pr-10 text-xs font-bold uppercase tracking-wider text-zinc-300 outline-none focus:border-[#d4af37] focus:text-white transition-all cursor-pointer hover:bg-zinc-800"
+                        >
+                            <option value="Todos">Todos os Profissionais</option>
+                            <option value="Bruna">Agenda da Bruna</option>
+                            <option value="Luis">Agenda do Luis</option>
+                            <option value="William">Agenda do William</option>
+                            <option value="Antonio">Agenda do Antonio</option>
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-zinc-500">
+                            <Filter size={12} fill="currentColor" />
+                        </div>
+                    </div>
+
+                    <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 flex-shrink-0">
+                        <button onClick={() => setViewMode('day')} className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${viewMode === 'day' ? 'bg-[#d4af37] text-black shadow-lg' : 'text-zinc-500 hover:text-white'}`}>Dia</button>
+                        <button onClick={() => setViewMode('week')} className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${viewMode === 'week' ? 'bg-[#d4af37] text-black shadow-lg' : 'text-zinc-500 hover:text-white'}`}>Semana</button>
+                    </div>
+
+                    <button onClick={() => handleOpenForm(new Date())} className="bg-[#d4af37] text-black px-4 py-2 rounded-full font-bold text-xs uppercase tracking-widest hover:scale-105 transition-transform flex items-center gap-2 whitespace-nowrap flex-shrink-0">
+                        <Plus size={14} /> Novo
                     </button>
                 </div>
             </header>
 
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar relative w-full min-h-[80vh] block visible">
-                {(() => {
-                    switch (viewMode) {
-                        case 'day':
-                            return (
-                                <div className="flex flex-col h-full overflow-y-auto scrollbar-hide pb-20">
-                                    <div className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 p-4 pb-2 text-center flex flex-col gap-4">
-                                        <div>
-                                            <p className="text-[#d4af37] text-[10px] font-black uppercase tracking-[0.5em] mb-1">{format(currentDate, "EEEE", { locale: ptBR })}</p>
-                                            <h2 className="text-4xl font-serif font-black text-white">{format(currentDate, "dd", { locale: ptBR })}</h2>
+            {/* --- BODY --- */}
+
+            {viewMode === 'day' ? (
+                // --- DAY VIEW ---
+                <div className="flex-1 p-4 overflow-hidden flex flex-col">
+                    <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl flex-1 overflow-y-auto custom-scrollbar relative flex h-full" style={{ maxHeight: 'calc(100vh - 100px)' }}>
+
+                        {/* LEFT COLUMN */}
+                        <div className="w-16 flex-shrink-0 border-r border-zinc-800/50 bg-zinc-950/30 sticky left-0 z-30 pointer-events-none">
+                            {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => {
+                                const hour = START_HOUR + i;
+                                return (
+                                    <div key={hour} className="h-20 border-b border-zinc-800/10 flex items-start justify-center pt-2 relative">
+                                        <span className="text-xs font-mono font-bold text-zinc-500 absolute -top-3 bg-zinc-950 px-1 rounded">{String(hour).padStart(2, '0')}:00</span>
+                                    </div>
+                                )
+                            })}
+                        </div>
+
+                        {/* RIGHT GRID */}
+                        <div className="flex-1 relative min-w-[300px]" style={{ height: `${GRID_HEIGHT}px` }} onDragOver={handleDragOver} onDrop={(e) => processDrop(e, currentDate)}>
+                            {isLoading && (
+                                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                                    <Loader2 className="animate-spin text-[#d4af37]" />
+                                </div>
+                            )}
+
+                            {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => (
+                                <div key={i} className="h-20 w-full border-b border-zinc-800/40 box-border hover:bg-white/5 transition-colors" style={{ top: `${i * 80}px`, position: 'absolute' }} />
+                            ))}
+
+                            <div className="absolute inset-0 z-0 cursor-crosshair" onClick={(e) => handleGridClick(e, currentDate)} />
+
+                            {nowLine >= 0 && isSameDay(currentDate, new Date()) && (
+                                <div className="absolute w-full border-t-2 border-red-500/70 z-30 pointer-events-none flex items-center" style={{ top: `${nowLine}px` }}>
+                                    <div className="w-2 h-2 rounded-full bg-red-500 -ml-1 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div>
+                                </div>
+                            )}
+
+                            {filteredAppointments.filter(a => isSameDay(parseISO(a.data_horario), currentDate)).map(appt => {
+                                const startDate = parseISO(appt.data_horario);
+                                const startH = startDate.getHours();
+                                const startM = startDate.getMinutes();
+                                if (startH < START_HOUR || startH >= END_HOUR) return null;
+                                const topPx = ((startH - START_HOUR) * 60 + startM) / 60 * 80;
+                                const heightPx = (appt.duration_minutes / 60) * 80;
+
+                                return (
+                                    <AppointmentCard
+                                        key={appt.id}
+                                        appt={appt}
+                                        style={{ top: `${topPx}px`, height: `${heightPx}px`, left: '10px', right: '10px' }}
+                                        onClick={(e) => { e.stopPropagation(); handleOpenForm(new Date(), appt); }}
+                                        onDragStart={handleDragStart}
+                                    />
+                                )
+                            })}
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                // --- WEEK VIEW ---
+                <div className="flex-1 p-2 md:p-4 overflow-hidden flex flex-col">
+                    <div className="rounded-xl flex-1 overflow-y-auto custom-scrollbar relative flex flex-col h-full bg-zinc-900/30 border border-zinc-800">
+                        {/* Headers */}
+                        <div className="flex border-b border-zinc-800 sticky top-0 z-40 bg-zinc-950">
+                            <div className="w-12 md:w-16 flex-shrink-0 border-r border-zinc-800/50 bg-zinc-950/30" />
+                            <div className="flex-1 grid grid-cols-7 divide-x divide-zinc-800/50">
+                                {weekDays.map(day => {
+                                    const isToday = isSameDay(day, new Date());
+                                    return (
+                                        <div key={day.toISOString()} className={`py-4 flex flex-col items-center justify-center ${isToday ? 'bg-[#d4af37]/10' : ''}`}>
+                                            <span className={`text-[10px] md:text-xs font-black uppercase tracking-wider ${isToday ? 'text-[#d4af37]' : 'text-zinc-500'}`}>{format(day, 'EEE', { locale: ptBR })}</span>
+                                            <div className={`mt-1 w-8 h-8 flex items-center justify-center rounded-full text-sm md:text-base font-bold ${isToday ? 'bg-[#d4af37] text-black shadow-[0_0_15px_rgba(212,175,55,0.4)]' : 'text-white'}`}>
+                                                {format(day, 'dd')}
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="flex-1">
-                                        {timeSlots.map(time => {
-                                            const slotAppts = appointments.filter(a =>
-                                                isSameDay(parseISO(a.data_horario), currentDate) &&
-                                                format(parseISO(a.data_horario), "HH:00") === time &&
-                                                (selectedBarberId === 'all' || a.barbeiro_id === selectedBarberId)
-                                            );
-                                            return (
-                                                <div key={time} className="grid grid-cols-[65px_1fr] md:grid-cols-[100px_1fr]">
-                                                    <div className="flex items-center justify-center border-r border-zinc-900 text-[11px] font-serif italic text-zinc-600">{time}</div>
-                                                    <TimeSlot
-                                                        time={time}
-                                                        date={currentDate}
-                                                        onClick={() => handleSlotClick(currentDate, time)}
-                                                        onDrop={processDrop}
-                                                    >
-                                                        {/* MULTI-TENANCY RENDER */}
-                                                        <div className="flex flex-row flex-wrap gap-2 p-2 w-full h-full pointer-events-none">
-                                                            {/* pointer-events-none on container so clicks pass to TimeSlot if empty space, but Card has pointer-events-auto */}
-                                                            {slotAppts.map(appt => (
-                                                                <div key={appt.id} className="relative flex-1 min-w-[150px] h-[80px] pointer-events-auto">
-                                                                    <AppointmentCard
-                                                                        appt={appt}
-                                                                        onClick={(e) => { e.stopPropagation(); setActiveManagement(appt); }}
-                                                                        onDragStart={handleDragStart}
-                                                                        className="absolute inset-0" // Fill the wrapper
-                                                                        showBarber={selectedBarberId === 'all'}
-                                                                    />
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </TimeSlot>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            );
-                        case 'week':
-                            return (
-                                <div key="week-view" className="flex-1 w-full min-h-[80vh] flex flex-col overflow-y-auto overflow-x-auto">
-                                    {/* Week Header */}
-                                    <div className="grid border-b border-zinc-900 bg-zinc-950 sticky top-0 z-40 min-w-[800px] md:min-w-0" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
-                                        <div className="h-16 border-r border-zinc-900" />
-                                        {Array.from({ length: 7 }).map((_, i) => {
-                                            const day = addDays(startOfWeek(currentDate, { weekStartsOn: 0 }), i);
-                                            const isToday = isSameDay(day, new Date());
-                                            return (
-                                                <div
-                                                    key={i}
-                                                    onClick={() => {
-                                                        setCurrentDate(day);
-                                                        setViewMode('day');
-                                                    }}
-                                                    className="h-16 flex flex-col items-center justify-center border-r border-zinc-900/50 bg-zinc-900/10 cursor-pointer hover:bg-white/5 transition-colors"
-                                                >
-                                                    <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{format(day, 'EEE', { locale: ptBR })}</span>
-                                                    <span className={`text-xl font-serif font-black ${isToday ? 'text-[#d4af37]' : 'text-zinc-500'}`}>{format(day, 'dd')}</span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
 
-                                    {/* Week Grid Content */}
-                                    <div className="grid w-full min-w-[800px] md:min-w-0" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
-                                        {/* Time Column (Left) */}
-                                        <div className="flex flex-col">
-                                            {timeSlots.map(time => (
-                                                <div key={time} className="h-[100px] flex items-center justify-center border-b border-r border-zinc-900/50 text-[10px] font-serif italic text-zinc-700 bg-zinc-950/50">
-                                                    {time}
-                                                </div>
-                                            ))}
+                        {/* Week Grid */}
+                        <div className="flex relative" style={{ height: `${GRID_HEIGHT}px` }}>
+                            <div className="w-12 md:w-16 flex-shrink-0 border-r border-zinc-800/50 bg-zinc-950/30 sticky left-0 z-30">
+                                {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => {
+                                    const hour = START_HOUR + i;
+                                    return (
+                                        <div key={hour} className="h-20 border-b border-zinc-800/10 flex items-start justify-center pt-2 relative">
+                                            <span className="text-[10px] md:text-xs font-mono font-bold text-zinc-500 absolute -top-3 bg-zinc-950 px-1 rounded">{String(hour).padStart(2, '0')}:00</span>
                                         </div>
+                                    )
+                                })}
+                            </div>
 
-                                        {/* Days Columns */}
-                                        {Array.from({ length: 7 }).map((_, colIndex) => {
-                                            const day = addDays(startOfWeek(currentDate, { weekStartsOn: 0 }), colIndex);
-                                            return (
-                                                <div key={colIndex} className="flex flex-col border-r border-zinc-900/30">
-                                                    {timeSlots.map(time => {
-                                                        // Find appointments for this Slot (FILTER instead of FIND)
-                                                        const slotAppts = appointments.filter(a =>
-                                                            isSameDay(parseISO(a.data_horario), day) &&
-                                                            format(parseISO(a.data_horario), "HH:00") === time &&
-                                                            (selectedBarberId === 'all' || a.barbeiro_id === selectedBarberId)
-                                                        );
-
-                                                        return (
-                                                            <div key={time} className="h-auto min-h-[100px] border-b border-zinc-900/30 relative bg-zinc-950/20 hover:bg-zinc-900/40 transition-colors flex flex-col">
-                                                                {/* Slot Container */}
-                                                                <TimeSlot
-                                                                    time={time}
-                                                                    date={day}
-                                                                    onClick={() => {
-                                                                        // Smart Click: If has appointments, open detail view. Else, new appointment.
-                                                                        if (slotAppts.length > 0) {
-                                                                            setSelectedSlotData(slotAppts);
-                                                                        } else {
-                                                                            handleSlotClick(day, time);
-                                                                        }
-                                                                    }}
-                                                                    onDrop={processDrop}
-                                                                >
-                                                                    <div className="flex flex-col gap-1 w-full p-1 relative h-full">
-                                                                        {/* EMERGENCY FIX: Simple Slice, No Modal */}
-                                                                        {/* MOBILE: Summary Button */}
-                                                                        {slotAppts.length > 0 && (
-                                                                            <div className="md:hidden w-full h-full flex-1 min-h-[50px]">
-                                                                                <button
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        setCurrentDate(day);
-                                                                                        setViewMode('day');
-                                                                                    }}
-                                                                                    className="w-full h-full bg-zinc-800 hover:bg-[#d4af37] border border-zinc-700 hover:border-[#d4af37] text-white hover:text-black rounded-lg flex flex-col items-center justify-center shadow-lg transition-all active:scale-95 group"
-                                                                                >
-                                                                                    <span className="text-[10px] font-medium opacity-70 uppercase tracking-widest group-hover:text-black/70">VISUALIZAR</span>
-                                                                                    <span className="text-xl font-black">{slotAppts.length}</span>
-                                                                                </button>
-                                                                            </div>
-                                                                        )}
-
-                                                                        {/* DESKTOP: Detailed Cards */}
-                                                                        <div className="hidden md:flex flex-col gap-1 w-full relative h-full">
-                                                                            {slotAppts.slice(0, 1).map(appt => (
-                                                                                <div key={appt.id} className="relative w-full h-[85px] pointer-events-auto">
-                                                                                    <AppointmentCard
-                                                                                        appt={appt}
-                                                                                        onClick={(e) => { e.stopPropagation(); setActiveManagement(appt); }}
-                                                                                        onDragStart={handleDragStart}
-                                                                                        className="absolute inset-0"
-                                                                                        showBarber={selectedBarberId === 'all'}
-                                                                                        compact={true}
-                                                                                    />
-                                                                                </div>
-                                                                            ))}
-
-                                                                            {
-                                                                                slotAppts.length > 1 && (
-                                                                                    <div
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            setSelectedSlotData(slotAppts);
-                                                                                        }}
-                                                                                        className="mt-1 w-full bg-zinc-800 text-white text-[10px] md:text-xs font-black uppercase tracking-widest py-2 rounded-lg text-center shadow-md border border-zinc-700 cursor-pointer hover:bg-[#d4af37] hover:text-black transition-all active:scale-95"
-                                                                                    >
-                                                                                        +{slotAppts.length - 1} MAIS
-                                                                                    </div>
-                                                                                )
-                                                                            }
-                                                                        </div>
-
-                                                                    </div>
-                                                                </TimeSlot>
-                                                            </div>
-                                                        )
-                                                    })}
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                </div>
-                            );
-                        case 'month':
-                            return (
-                                <div key="month-view" className="h-full overflow-y-auto scrollbar-hide p-8 min-h-[600px]">
-                                    <div className="grid grid-cols-7 gap-1">
-                                        {['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'].map(d => (
-                                            <div key={d} className="text-center text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] py-4">{d}</div>
-                                        ))}
-                                        {Array.from({ length: 35 }).map((_, i) => {
-                                            const day = addDays(startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 }), i);
-                                            const isCurMonth = isSameMonth(day, currentDate);
-
-                                            // STRICT DATE FILTERING (YYYY-MM-DD)
-                                            // We compare the exact date string 'YYYY-MM-DD' to avoid "ghost" appointments from other months/years
-                                            const cellDateStr = format(day, 'yyyy-MM-dd');
-                                            const hasAppts = appointments.filter(a => {
-                                                const apptDate = parseISO(a.data_horario);
-                                                return format(apptDate, 'yyyy-MM-dd') === cellDateStr &&
-                                                    (selectedBarberId === 'all' || a.barbeiro_id === selectedBarberId);
-                                            });
-
-                                            return (
-                                                <div
-                                                    key={i}
-                                                    onClick={() => { setCurrentDate(day); setViewMode('day'); }}
-                                                    className={`h-32 border border-zinc-900/50 rounded-xl p-3 bg-zinc-900/10 hover:bg-zinc-900/30 transition-colors cursor-pointer ${!isCurMonth && 'opacity-20'}`}
-                                                    onDragOver={(e) => e.preventDefault()}
-                                                    onDrop={(e) => {
-                                                        e.preventDefault();
-                                                        const droppedId = e.dataTransfer.getData("text/plain");
-                                                        if (droppedId) {
-                                                            const originalAppt = appointments.find(a => a.id == droppedId);
-                                                            const originalTime = originalAppt ? format(parseISO(originalAppt.data_horario), 'HH:mm') : '09:00';
-                                                            processDrop(day, originalTime, droppedId);
-                                                        }
-                                                    }}
-                                                >
-                                                    <span className={`text-lg font-black ${isSameDay(day, new Date()) ? 'text-[#d4af37]' : 'text-zinc-500'}`}>{format(day, 'dd')}</span>
-                                                    <div className="mt-2 space-y-1">
-                                                        {hasAppts.slice(0, 2).map(a => (
-                                                            <div
-                                                                key={`${a.id}-${cellDateStr}`} // Unique key: ID + Date
-                                                                draggable
-                                                                onDragStart={(e) => handleDragStart(e, a.id)}
-                                                                className="text-[9px] bg-[#d4af37]/10 text-[#d4af37] px-2 py-1 rounded-md font-bold uppercase truncate cursor-grab active:cursor-grabbing"
-                                                            >
-                                                                {a.cliente_nome}
-                                                            </div>
-                                                        ))}
-                                                        {hasAppts.length > 2 && <div className="text-[8px] text-zinc-600 font-black pl-1">+{hasAppts.length - 2}</div>}
-                                                    </div>
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                </div>
-                            );
-                        default:
-                            return null;
-                    }
-                })()}
-            </div>
-
-            {/* RESTORED FAB */}
-            <button
-                onClick={handleFabClick}
-                className="md:hidden fixed bottom-6 right-6 w-16 h-16 bg-[#d4af37] rounded-full shadow-2xl shadow-[#d4af37]/40 flex items-center justify-center text-black z-50 active:scale-90 transition-transform"
-            >
-                <Plus size={24} />
-            </button>
-
-
-            {
-                selectedSlotData && (
-                    <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm' onClick={() => setSelectedSlotData(null)}>
-                        <div className='bg-zinc-900 border border-[#d4af37] p-6 rounded-2xl w-96 max-h-[80vh] overflow-y-auto shadow-2xl' onClick={e => e.stopPropagation()}>
-                            <h3 className='text-[#d4af37] text-xl font-serif font-black mb-4 uppercase tracking-wider'>Agendamentos do Horário</h3>
-                            <div className='space-y-3'>
-                                {selectedSlotData.map(item => (
+                            <div className="flex-1 grid grid-cols-7 divide-x divide-zinc-800/50 relative">
+                                {weekDays.map(day => (
                                     <div
-                                        key={item.id}
-                                        className='bg-zinc-800/50 p-4 rounded-xl border border-white/5 hover:bg-zinc-800 transition-colors cursor-pointer'
-                                        onClick={() => {
-                                            setActiveManagement(item);
-                                            setSelectedSlotData(null);
-                                        }}
+                                        key={day.toISOString()}
+                                        className="relative h-full group transition-colors hover:bg-white/[0.02]"
+                                        onDragOver={handleDragOver}
+                                        onDrop={(e) => processDrop(e, day)}
+                                        onClick={(e) => handleGridClick(e, day)}
+                                        style={{ minWidth: '0' }}
                                     >
-                                        <p className='font-bold text-white uppercase text-sm'>{item.cliente_nome}</p>
-                                        <p className='text-xs text-[#d4af37] mt-1'>{item.servico_nome}</p>
-                                        <p className='text-[10px] text-zinc-500 mt-2 font-mono'>{item.barbeiro_nome || 'Barbeiro'}</p>
+                                        {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => (
+                                            <div key={i} className="h-20 w-full border-b border-zinc-800/20 box-border pointer-events-none" style={{ top: `${i * 80}px`, position: 'absolute' }} />
+                                        ))}
+
+                                        {nowLine >= 0 && isSameDay(day, new Date()) && (
+                                            <div className="absolute w-full border-t-2 border-red-500/70 z-30 pointer-events-none flex items-center" style={{ top: `${nowLine}px` }}>
+                                                <div className="w-2 h-2 rounded-full bg-red-500 -ml-1 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div>
+                                            </div>
+                                        )}
+
+                                        {filteredAppointments.filter(a => isSameDay(parseISO(a.data_horario), day)).map(appt => {
+                                            const startDate = parseISO(appt.data_horario);
+                                            const startH = startDate.getHours();
+                                            const startM = startDate.getMinutes();
+                                            if (startH < START_HOUR || startH >= END_HOUR) return null;
+                                            const topPx = ((startH - START_HOUR) * 60 + startM) / 60 * 80;
+                                            const heightPx = (appt.duration_minutes / 60) * 80;
+
+                                            return (
+                                                <AppointmentCard
+                                                    key={appt.id}
+                                                    appt={appt}
+                                                    className="mx-0.5 md:mx-1"
+                                                    style={{ top: `${topPx}px`, height: `${heightPx}px`, left: '0', right: '0' }}
+                                                    onClick={(e) => { e.stopPropagation(); handleOpenForm(new Date(), appt); }}
+                                                    onDragStart={handleDragStart}
+                                                />
+                                            )
+                                        })}
                                     </div>
                                 ))}
                             </div>
-                            <button onClick={() => setSelectedSlotData(null)} className='mt-6 w-full bg-red-500/10 text-red-500 py-3 rounded-xl hover:bg-red-500/20 font-black uppercase text-xs tracking-widest transition-colors'>Fechar</button>
-                        </div>
-                    </div>
-                )
-            }
-
-            {
-                activeManagement && (
-                    <div className='fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm' onClick={() => setActiveManagement(null)}>
-                        <div className='bg-zinc-950 border border-[#d4af37] p-8 rounded-2xl w-full max-w-md shadow-2xl relative' onClick={e => e.stopPropagation()}>
-
-                            {/* CABEÇALHO COM AÇÕES RÁPIDAS */}
-                            <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
-                                {/* NOME E STATUS */}
-                                <div>
-                                    <h2 className="text-2xl font-black text-white tracking-tighter">
-                                        {activeManagement?.cliente_nome || 'Cliente'}
-                                    </h2>
-                                    <p className="text-xs text-[#d4af37] font-bold uppercase tracking-widest mt-1">
-                                        {activeManagement?.status || 'Confirmado'}
-                                    </p>
-                                </div>
-
-                                {/* BARRA DE ÍCONES (AÇÕES) */}
-                                <div className="flex items-center gap-3">
-                                    {/* 1. WHATSAPP */}
-                                    {activeManagement?.cliente_telefone && (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                window.open(`https://wa.me/55${activeManagement.cliente_telefone?.replace(/\D/g, '')}`, '_blank');
-                                            }}
-                                            className="w-10 h-10 rounded-full bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white border border-green-500/30 flex items-center justify-center transition-all"
-                                            title="Chamar no WhatsApp"
-                                        >
-                                            <MessageCircle size={20} />
-                                        </button>
-                                    )}
-                                    {/* 2. REAGENDAR (Abre o modal de edição) */}
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleEdit(activeManagement);
-                                        }}
-                                        className="w-10 h-10 rounded-full bg-[#d4af37]/10 text-[#d4af37] hover:bg-[#d4af37] hover:text-black border border-[#d4af37]/30 flex items-center justify-center transition-all"
-                                        title="Editar / Reagendar"
-                                    >
-                                        <CalendarClock size={20} />
-                                    </button>
-                                    {/* 3. EXCLUIR */}
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (activeManagement?.id && confirm("Tem certeza que deseja cancelar este agendamento?")) {
-                                                handleDelete(activeManagement.id);
-                                            }
-                                        }}
-                                        className="w-10 h-10 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/30 flex items-center justify-center transition-all"
-                                        title="Cancelar Agendamento"
-                                    >
-                                        <Trash2 size={20} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* INFO GRID */}
-                            <div className="grid grid-cols-2 gap-4 mb-8">
-                                <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5">
-                                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Serviço</p>
-                                    <p className="text-sm font-bold text-white uppercase">{activeManagement?.servico_nome}</p>
-                                </div>
-                                <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5">
-                                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Profissional</p>
-                                    <p className="text-sm font-bold text-white uppercase">{activeManagement?.barbeiro_nome || 'Barbeiro'}</p>
-                                </div>
-                                <div className="col-span-2 bg-zinc-900/50 p-4 rounded-xl border border-white/5 flex items-center gap-3">
-                                    <div className="p-2 bg-[#d4af37]/10 rounded-lg text-[#d4af37]">
-                                        <Clock size={20} />
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Data e Horário</p>
-                                        <p className="text-lg font-serif font-white">
-                                            {activeManagement?.data_horario && format(parseISO(activeManagement.data_horario), "dd 'de' MMMM", { locale: ptBR })} <span className="text-zinc-600 mx-2">|</span> {activeManagement?.data_horario && format(parseISO(activeManagement.data_horario), "HH:mm")}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* ACTIONS REMOVED (Moved to Toolbar) */}
-
-                            {/* CLOSE BUTTON */}
-                            <button
-                                onClick={() => setActiveManagement(null)}
-                                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-500 hover:text-white transition-colors"
-                            >
-                                <X size={16} />
-                            </button>
-
-                        </div>
-                    </div>
-                )
-            }
-
-            {/* NEW APPOINTMENT FORM MODAL */}
-            {
-                isFormOpen && (
-                    <div className='fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/90 backdrop-blur-sm' onClick={() => setIsFormOpen(false)}>
-                        <div className='bg-zinc-950 border-t md:border border-[#d4af37] p-6 md:p-8 pb-40 md:pb-8 rounded-t-[32px] md:rounded-2xl w-full md:max-w-md shadow-2xl relative max-h-[90vh] flex flex-col md:block overflow-y-auto overflow-x-hidden transition-transform duration-300 transform translate-y-0' onClick={e => e.stopPropagation()}>
-                            <div className="text-center mb-6">
-                                <h2 className="text-lg md:text-2xl font-serif font-black text-white uppercase mb-1">
-                                    {formData.id ? "Editar Agendamento" : "Novo Agendamento"}
-                                </h2>
-                                <p className="text-zinc-500 text-xs uppercase tracking-widest">
-                                    {formData.data_horario && format(parseISO(formData.data_horario), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}
-                                </p>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Nome do Cliente</label>
-                                    <input
-                                        autoFocus
-                                        type="text"
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none transition-colors"
-                                        value={formData.cliente_nome}
-                                        onChange={e => setFormData({ ...formData, cliente_nome: e.target.value })}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Telefone</label>
-                                    <input
-                                        type="tel"
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none transition-colors"
-                                        value={formData.cliente_telefone}
-                                        onChange={e => setFormData({ ...formData, cliente_telefone: e.target.value })}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Serviço</label>
-                                    <select
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none transition-colors"
-                                        value={formData.servico_id}
-                                        onChange={e => setFormData({ ...formData, servico_id: e.target.value })}
-                                    >
-                                        {availableServices.map(s => (
-                                            <option key={s.id} value={s.id}>{s.nome} - R$ {s.preco}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {/* --- CAMPOS PARA SERVIÇO PERSONALIZADO --- */}
-                                {formData.servico_id === 'custom' && (
-                                    <div className="mt-3 p-3 bg-zinc-900 border border-zinc-700 rounded-lg animate-in slide-in-from-top-2">
-                                        <p className="text-[#d4af37] text-xs font-bold uppercase mb-3 flex items-center gap-2">
-                                            ✏️ Detalhes do Serviço Extra
-                                        </p>
-
-                                        <div className="grid grid-cols-3 gap-3">
-                                            {/* CAMPO DE DESCRIÇÃO (Ocupa 2/3) */}
-                                            <div className="col-span-2">
-                                                <label className="text-[10px] text-zinc-500 uppercase font-bold">Descrição / Obs</label>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Ex: Luzes, Sobrancelha..."
-                                                    value={customDescription}
-                                                    onChange={(e) => setCustomDescription(e.target.value)}
-                                                    className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-white text-sm focus:border-[#d4af37] outline-none"
-                                                />
-                                            </div>
-                                            {/* CAMPO DE VALOR (Ocupa 1/3) */}
-                                            <div className="col-span-1">
-                                                <label className="text-[10px] text-zinc-500 uppercase font-bold">Valor (R$)</label>
-                                                <input
-                                                    type="number"
-                                                    placeholder="0,00"
-                                                    value={customPrice}
-                                                    onChange={(e) => setCustomPrice(e.target.value)}
-                                                    className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-[#d4af37] font-bold text-sm focus:border-[#d4af37] outline-none"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* DATE TIME EDITOR - ONLY IF EDITING OR RESCHEDULING */}
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Data</label>
-                                        <input
-                                            type="date"
-                                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none"
-                                            value={formData.data_horario ? format(parseISO(formData.data_horario), 'yyyy-MM-dd') : ''}
-                                            onChange={e => {
-                                                const oldDate = parseISO(formData.data_horario);
-                                                const newD = parseISO(e.target.value);
-                                                // Preserve time
-                                                newD.setHours(oldDate.getHours(), oldDate.getMinutes());
-                                                setFormData({ ...formData, data_horario: newD.toISOString() });
-                                            }}
-                                        />
-                                    </div>
-
-
-                                    {/* --- FEEDBACK VISUAL DE MODIFICAÇÃO (ANTES vs DEPOIS) --- */}
-                                    <div className="col-span-2 my-2 transition-all duration-300">
-                                        {(() => {
-                                            const originalAppt = formData.id ? appointments.find(a => a.id === formData.id) : null;
-                                            const isChanged = originalAppt && formData.data_horario && !isSameDay(parseISO(formData.data_horario), parseISO(originalAppt.data_horario));
-
-                                            return isChanged ? (
-                                                <div className="bg-green-500/10 border-2 border-green-500 rounded-lg p-3 text-center animate-pulse shadow-[0_0_20px_rgba(34,197,94,0.2)]">
-                                                    <p className="text-green-500 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center justify-center gap-2">
-                                                        <span className="line-through opacity-50 text-zinc-400">
-                                                            {format(parseISO(originalAppt!.data_horario), "dd 'de' MMM", { locale: ptBR })}
-                                                        </span>
-                                                        <span>➜</span>
-                                                        <span>MUDANDO PARA</span>
-                                                    </p>
-                                                    <p className="text-white font-black text-xl uppercase">
-                                                        {format(parseISO(formData.data_horario), "EEEE", { locale: ptBR })}
-                                                    </p>
-                                                    <p className="text-green-400 text-sm font-bold">
-                                                        {format(parseISO(formData.data_horario), "dd 'de' MMMM", { locale: ptBR })}
-                                                    </p>
-                                                </div>
-                                            ) : (
-                                                <div className={`p-3 rounded-lg text-center border ${formData.id ? 'bg-zinc-900 border-zinc-800 opacity-60' : 'bg-zinc-900 border-[#d4af37] shadow-[0_0_15px_rgba(212,175,55,0.1)]'}`}>
-                                                    <p className={`text-[10px] uppercase tracking-[0.2em] mb-1 ${formData.id ? 'text-zinc-500' : 'text-[#d4af37]'}`}>
-                                                        {formData.id ? 'DATA ATUAL (SEM ALTERAÇÃO)' : 'DATA SELECIONADA'}
-                                                    </p>
-                                                    <p className={`font-black text-xl uppercase leading-none ${formData.id ? 'text-zinc-400' : 'text-[#d4af37]'}`}>
-                                                        {formData.data_horario ? format(parseISO(formData.data_horario), "EEEE", { locale: ptBR }) : '---'}
-                                                    </p>
-                                                    <p className={`text-sm font-medium mt-1 ${formData.id ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                        {formData.data_horario ? format(parseISO(formData.data_horario), "dd 'de' MMMM", { locale: ptBR }) : 'Selecione a data'}
-                                                    </p>
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
-
-                                    <div>
-                                        <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1 block">Horário</label>
-                                        <select
-                                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold uppercase focus:border-[#d4af37] outline-none"
-                                            value={formData.data_horario ? format(parseISO(formData.data_horario), 'HH:mm') : ''}
-                                            onChange={e => {
-                                                const oldDate = parseISO(formData.data_horario);
-                                                const [h, m] = e.target.value.split(':').map(Number);
-                                                const newD = new Date(oldDate);
-                                                newD.setHours(h, m);
-                                                setFormData({ ...formData, data_horario: newD.toISOString() });
-                                            }}
-                                        >
-                                            {Array.from({ length: 14 }, (_, i) => `${String(i + 9).padStart(2, '0')}:00`).map(t => (
-                                                <option key={t} value={t}>{t}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-
-                            </div>
-
-                            <div className="mt-auto md:mt-8 grid grid-cols-2 gap-3 pt-4 border-t border-zinc-900 md:border-none pb-12 md:pb-0">
-                                <button
-                                    onClick={() => setIsFormOpen(false)}
-                                    className="h-16 md:h-14 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 rounded-2xl md:rounded-xl flex items-center justify-center font-black text-sm md:text-xs uppercase tracking-widest transition-colors"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    onClick={handleSaveForm}
-                                    className="h-16 md:h-14 bg-[#d4af37] hover:bg-[#b5952f] text-black rounded-2xl md:rounded-xl flex items-center justify-center font-black text-sm md:text-xs uppercase tracking-widest transition-colors shadow-lg shadow-[#d4af37]/20"
-                                >
-                                    {formData.id ? "Atualizar" : "Confirmar"}
-                                </button>
-                            </div>
-
-                            <button
-                                onClick={() => setIsFormOpen(false)}
-                                className="absolute top-6 right-6 p-4 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-500 hover:text-white transition-colors md:hidden"
-                            >
-                                <X size={20} />
-                            </button>
-                            <button
-                                onClick={() => setIsFormOpen(false)}
-                                className="hidden md:flex absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-900 items-center justify-center text-zinc-500 hover:text-white transition-colors"
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
-                    </div>
-                )
-            }
-
-            {/* TEAM SELECTION MODAL */}
-            {isFilterOpen && (
-                <div
-                    className="fixed inset-0 z-[90] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
-                    onClick={() => setIsFilterOpen(false)}
-                >
-                    <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-white font-serif font-black uppercase text-xl">Filtrar Profissional</h3>
-                            <button onClick={() => setIsFilterOpen(false)} className="text-zinc-500 hover:text-white">
-                                <X size={24} />
-                            </button>
-                        </div>
-                        <div className="flex flex-col gap-3">
-                            <button
-                                onClick={() => { setSelectedBarberId('all'); setIsFilterOpen(false); }}
-                                className={`w-full p-4 rounded-xl font-black uppercase tracking-widest text-sm flex items-center justify-between transition-all ${selectedBarberId === 'all' ? 'bg-[#d4af37] text-black' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
-                            >
-                                <span>Todos</span>
-                                {selectedBarberId === 'all' && <Check size={18} />}
-                            </button>
-                            {barbers.map(b => (
-                                <button
-                                    key={b.id}
-                                    onClick={() => { setSelectedBarberId(b.id); setIsFilterOpen(false); }}
-                                    className={`w-full p-4 rounded-xl font-black uppercase tracking-widest text-sm flex items-center justify-between transition-all ${selectedBarberId === b.id ? 'bg-[#d4af37] text-black' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
-                                >
-                                    <span>{b.nome}</span>
-                                    {selectedBarberId === b.id && <Check size={18} />}
-                                </button>
-                            ))}
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* --- MODAL --- */}
+            <AnimatePresence>
+                {isFormOpen && (
+                    <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setIsFormOpen(false)}>
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-zinc-950 border border-zinc-800 rounded-3xl p-8 w-full max-w-md shadow-2xl relative"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <h2 className="text-xl font-black text-white uppercase mb-6 flex items-center gap-2">
+                                <Plus className="text-[#d4af37]" />
+                                {formData.id ? 'Editar' : 'Novo'} Agendamento
+                            </h2>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Serviço</label>
+                                    <select
+                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold outline-none focus:border-[#d4af37]"
+                                        value={formData.servico_id}
+                                        onChange={e => handleServiceChange(e.target.value)}
+                                    >
+                                        <option value="">Selecione...</option>
+                                        {availableServices.map(s => (
+                                            <option key={s.id} value={s.id}>{s.nome} - {s.duration} min</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Profissional</label>
+                                    <select
+                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold outline-none focus:border-[#d4af37]"
+                                        value={formData.professional}
+                                        onChange={e => setFormData({ ...formData, professional: e.target.value })}
+                                    >
+                                        <option value="">Selecione...</option>
+                                        <option value="Bruna">Bruna</option>
+                                        <option value="Luis">Luis</option>
+                                        <option value="William">William</option>
+                                        <option value="Antonio">Antonio</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Duração</label>
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1">
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold outline-none focus:border-[#d4af37]"
+                                                    value={Math.floor((formData.duration || 0) / 60)}
+                                                    onChange={e => {
+                                                        const newHours = parseInt(e.target.value) || 0;
+                                                        const currentMinutes = (formData.duration || 0) % 60;
+                                                        setFormData({ ...formData, duration: (newHours * 60) + currentMinutes });
+                                                    }}
+                                                />
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500 text-xs font-bold">HRS</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-bold outline-none focus:border-[#d4af37]"
+                                                    value={(formData.duration || 0) % 60}
+                                                    onChange={e => {
+                                                        const newMinutes = parseInt(e.target.value) || 0;
+                                                        const currentHours = Math.floor((formData.duration || 0) / 60);
+                                                        setFormData({ ...formData, duration: (currentHours * 60) + newMinutes });
+                                                    }}
+                                                />
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500 text-xs font-bold">MIN</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <input className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white" placeholder="Nome do Cliente" value={formData.cliente_nome} onChange={e => setFormData({ ...formData, cliente_nome: e.target.value })} />
+                                    <input className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white" placeholder="Telefone" value={formData.cliente_telefone} onChange={e => setFormData({ ...formData, cliente_telefone: e.target.value })} />
+                                </div>
+
+                                {formData.servico_id === 'custom' && (
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <input className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm" placeholder="Descrição" value={customDescription} onChange={e => setCustomDescription(e.target.value)} />
+                                        <input className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm" placeholder="Preço" type="number" value={customPrice} onChange={e => setCustomPrice(e.target.value)} />
+                                    </div>
+                                )}
+
+                                <div className="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 flex flex-col gap-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-zinc-500 font-bold uppercase">Início</span>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="23"
+                                                className="w-16 bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-center text-white font-mono font-bold outline-none focus:border-[#d4af37]"
+                                                value={formData.data_horario ? parseISO(formData.data_horario).getHours() : 0}
+                                                onChange={e => {
+                                                    const date = parseISO(formData.data_horario);
+                                                    const newDate = setHours(date, parseInt(e.target.value) || 0);
+                                                    setFormData({ ...formData, data_horario: newDate.toISOString() });
+                                                }}
+                                            />
+                                            <span className="text-zinc-500 font-bold">:</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="59"
+                                                className="w-16 bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-center text-white font-mono font-bold outline-none focus:border-[#d4af37]"
+                                                value={formData.data_horario ? parseISO(formData.data_horario).getMinutes() : 0}
+                                                onChange={e => {
+                                                    const date = parseISO(formData.data_horario);
+                                                    const newDate = setMinutes(date, parseInt(e.target.value) || 0);
+                                                    setFormData({ ...formData, data_horario: newDate.toISOString() });
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-2 text-xs">
+                                        <span className="text-zinc-500">Previsão Término:</span>
+                                        <span className="text-[#d4af37] font-mono font-bold">
+                                            {(() => {
+                                                if (!formData.data_horario) return '--:--';
+                                                return format(addMinutes(parseISO(formData.data_horario), formData.duration || 30), 'HH:mm');
+                                            })()}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    {formData.id && (
+                                        <button
+                                            onClick={handleDelete}
+                                            disabled={isSaving}
+                                            className="bg-red-600 text-white font-black uppercase py-4 px-6 rounded-xl hover:bg-red-700 transition-all"
+                                            type="button"
+                                        >
+                                            Excluir
+                                        </button>
+                                    )}
+                                    <button onClick={handleSaveForm} disabled={isSaving} className="flex-1 bg-[#d4af37] text-black font-black uppercase py-4 rounded-xl hover:bg-[#b5952f] transition-all">
+                                        {isSaving ? 'Salvando...' : 'Confirmar Agendamento'}
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

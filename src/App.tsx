@@ -8,6 +8,10 @@ import { useAuth } from './contexts/AuthContext';
 // import Dashboard from './pages/Dashboard';
 import Login from './pages/LoginPage';
 import Agenda from './pages/Agenda';
+import Inbox from './pages/Inbox';
+import Clients from './pages/Clients';
+import SettingsPage from './pages/SettingsPage';
+import Dashboard from './pages/Dashboard';
 // import AdsDashboard from './pages/AdsDashboard';
 // import CRM from './pages/CRM';
 // import Settings from './pages/Settings';
@@ -60,6 +64,46 @@ export default function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <PageWrapper><Agenda /></PageWrapper>
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inbox"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <PageWrapper><Inbox /></PageWrapper>
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/clients"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <PageWrapper><Clients /></PageWrapper>
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/configuracoes"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <PageWrapper><SettingsPage /></PageWrapper>
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <PageWrapper><Dashboard /></PageWrapper>
                 </MainLayout>
               </ProtectedRoute>
             }

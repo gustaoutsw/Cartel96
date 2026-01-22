@@ -9,7 +9,7 @@ export interface Barber {
 export const BARBERS: Barber[] = [
     {
         id: 'luiz-uuid',
-        name: 'Luiz',
+        name: 'Luis',
         specialty: 'Corte Clássico',
         commissionRate: 0.5
     },
