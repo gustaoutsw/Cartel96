@@ -39,6 +39,15 @@ export default defineConfig({
     },
     watch: {
       usePolling: true
-    }
+    },
+    // 👇 O TÚNEL MÁGICO ENTRA AQUI 👇
+    proxy: {
+      '/chatwoot_api': {
+        target: 'https://chat.ascendpanel.com.br/api/v1',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/chatwoot_api/, ''),
+      },
+    },
   }
 });
