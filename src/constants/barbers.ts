@@ -10,7 +10,7 @@ export const BARBERS: Barber[] = [
     {
         id: 'luiz-uuid',
         name: 'Luis',
-        specialty: 'Corte Clássico',
+        specialty: 'Visagista',
         commissionRate: 0.5
     },
     {
@@ -28,7 +28,7 @@ export const BARBERS: Barber[] = [
     {
         id: 'bruna-uuid',
         name: 'Bruna',
-        specialty: 'Colorimetria',
+        specialty: 'Trancista',
         commissionRate: 0.5
     }
 ];

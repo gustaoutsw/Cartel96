@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 // --- CONSTANTS ---
 const START_HOUR = 8;
-const END_HOUR = 23;
+const END_HOUR = 22; // Extended to 21:00 (Last block starts at 21)
 const PIXELS_PER_HOUR = 80;
 const GRID_HEIGHT = (END_HOUR - START_HOUR) * PIXELS_PER_HOUR;
 

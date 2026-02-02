@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Clock, DollarSign, X } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 // Types
 interface Service {
@@ -13,6 +14,7 @@ interface Service {
 }
 
 export default function SettingsPage() {
+    const { profile } = useAuth();
     const [activeTab, setActiveTab] = useState('services');
     const [services, setServices] = useState<Service[]>([]);
     const [showModal, setShowModal] = useState(false);
@@ -25,8 +27,10 @@ export default function SettingsPage() {
     const [durationMinutes, setDurationMinutes] = useState('30');
 
     useEffect(() => {
-        fetchServices();
-    }, []);
+        if (profile?.nome) {
+            fetchServices();
+        }
+    }, [profile]);
 
     const fetchServices = async () => {
         try {
@@ -34,6 +38,7 @@ export default function SettingsPage() {
             const { data, error } = await supabase
                 .from('services')
                 .select('*')
+                .eq('professional', profile?.nome) // Filter by logged in professional name
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -62,8 +67,9 @@ export default function SettingsPage() {
         try {
             const { error } = await supabase.from('services').insert([{
                 name: newService.name,
-                price: parseFloat(newService.price.toString().replace(',', '.')), // Handle comma decimals if user types them
-                duration_minutes: totalMinutes
+                price: parseFloat(newService.price.toString().replace(',', '.')),
+                duration_minutes: totalMinutes,
+                professional: profile?.nome // Save with professional name
             }]);
 
             if (error) throw error;

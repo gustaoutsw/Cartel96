@@ -7,6 +7,7 @@ import { useAuth } from './contexts/AuthContext';
 // Pages
 // import Dashboard from './pages/Dashboard';
 import Login from './pages/LoginPage';
+import Booking from './pages/Booking';
 import Agenda from './pages/Agenda';
 import Inbox from './pages/Inbox';
 import Clients from './pages/Clients';
@@ -56,6 +57,7 @@ export default function App() {
       <AnimatePresence mode="wait">
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/agendar" element={<Booking />} />
 
           {/* PROTECTED ROUTES */}
           <Route
