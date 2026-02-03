@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Scissors, Loader2, User, ChevronRight, Clock, DollarSign, Calendar, CheckCircle2, ChevronLeft, AlertCircle, LogOut, Sparkles, AlertTriangle } from 'lucide-react';
+import { Scissors, Loader2, User, ChevronRight, Clock, DollarSign, Calendar, CheckCircle2, ChevronLeft, AlertCircle, LogOut, Sparkles, AlertTriangle, MessageCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { BARBERS } from '../../constants/barbers';
 import { format, addDays, isSameDay, addMinutes, parseISO, setHours, setMinutes, startOfDay, isBefore, isAfter, getHours, setSeconds, differenceInMinutes } from 'date-fns';
@@ -35,6 +35,20 @@ const itemVariants = {
     visible: { opacity: 1, y: 0 }
 };
 
+// --- MEMOIZED DATE CARD ---
+const DateCard = memo(({ date, isSelected, onClick }: { date: Date, isSelected: boolean, onClick: () => void }) => (
+    <button
+        onClick={onClick}
+        className={`flex-shrink-0 w-14 h-18 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all snap-center ${isSelected
+            ? 'bg-[#fbbf24] border-[#fbbf24] text-black shadow-[0_0_15px_rgba(251,191,36,0.4)] scale-105 z-10'
+            : 'bg-zinc-900/50 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800'
+            }`}
+    >
+        <span className="text-[9px] font-bold uppercase tracking-wider">{format(date, 'EEE', { locale: ptBR })}</span>
+        <span className="text-lg font-black">{format(date, 'dd')}</span>
+    </button>
+));
+
 export default function Booking() {
     // --- STATE ---
     const [phone, setPhone] = useState('');
@@ -60,6 +74,16 @@ export default function Booking() {
 
     // Form
     const [formData, setFormData] = useState({ name: '', email: '' });
+
+    // Date Carousel Refs
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+    const scrollDates = (direction: 'left' | 'right') => {
+        if (scrollContainerRef.current) {
+            const scrollAmount = 200;
+            scrollContainerRef.current.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+        }
+    };
 
     //   // --- INIT & AUTH ---
     useEffect(() => {
@@ -134,6 +158,14 @@ export default function Booking() {
     };
 
     const handleServiceSelect = (service: Service) => {
+        // SPECIAL FLOW: Bruna -> WhatsApp
+        if (selectedBarber?.name?.toLowerCase().includes('bruna')) {
+            const message = `Olá Bruna, vim pelo App da Cartel96 e gostaria de falar sobre um agendamento de ${service.name}.`;
+            const url = `https://wa.me/554195572686?text=${encodeURIComponent(message)}`;
+            window.open(url, '_blank');
+            return;
+        }
+
         setSelectedService(service);
         setSelectedDate(new Date());
         setShowSlots(false);
@@ -268,6 +300,15 @@ export default function Booking() {
             const startTime = parseISO(selectedBlock.startIso);
             const endTime = addMinutes(startTime, selectedService.duration_minutes);
 
+            // 1. Upsert Client (First source of truth)
+            if (phone && customerName) {
+                const { error: clientError } = await supabase.from('clientes').upsert(
+                    { nome: customerName, telefone: phone, email: customerEmail || '' },
+                    { onConflict: 'telefone' }
+                );
+                if (clientError) console.error("Error syncing client:", clientError);
+            }
+
             const payload = {
                 client_name: customerName,
                 client_phone: phone,
@@ -285,12 +326,6 @@ export default function Booking() {
             const { error } = await supabase.from('appointments').insert([payload]);
 
             if (error) throw error;
-            if (phone && customerName) {
-                await supabase.from('clientes').upsert(
-                    { nome: customerName, telefone: phone, email: customerEmail || '' },
-                    { onConflict: 'telefone' }
-                );
-            }
             setStep(5);
         } catch (error) {
             console.error("Booking Error:", error);
@@ -377,18 +412,27 @@ export default function Booking() {
                             <h2 className="text-2xl font-bold text-white">{selectedBarber?.name}</h2>
                         </div>
                         <div className="space-y-3">
-                            {servicesLoading ? <div className="py-20 flex justify-center text-[#fbbf24]"><Loader2 className="animate-spin w-8 h-8" /></div> : services.map(service => (
-                                <motion.button key={service.id} onClick={() => handleServiceSelect(service)} className="w-full bg-zinc-900/50 border border-zinc-800 p-5 rounded-xl flex items-center justify-between hover:bg-zinc-900 hover:border-[#fbbf24] transition-all text-left group">
-                                    <div>
-                                        <h3 className="text-lg font-bold text-white group-hover:text-[#fbbf24]">{service.name}</h3>
-                                        <div className="flex gap-4 mt-1 text-sm text-zinc-400 font-medium">
-                                            <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {service.duration_minutes} min</span>
-                                            <span className="flex items-center gap-1"><DollarSign className="w-4 h-4" /> R$ {service.price.toFixed(2)}</span>
+                            {servicesLoading ? <div className="py-20 flex justify-center text-[#fbbf24]"><Loader2 className="animate-spin w-8 h-8" /></div> : services.map(service => {
+                                const isBruna = selectedBarber?.name?.toLowerCase().includes('bruna');
+                                return (
+                                    <motion.button key={service.id} onClick={() => handleServiceSelect(service)} className="w-full bg-zinc-900/50 border border-zinc-800 p-5 rounded-xl flex items-center justify-between hover:bg-zinc-900 hover:border-[#fbbf24] transition-all text-left group">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-white group-hover:text-[#fbbf24]">{service.name}</h3>
+                                            <div className="flex gap-4 mt-1 text-sm text-zinc-400 font-medium">
+                                                <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {service.duration_minutes} min</span>
+                                                <span className="flex items-center gap-1"><DollarSign className="w-4 h-4" /> R$ {service.price.toFixed(2)}</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <ChevronRight className="text-zinc-600 group-hover:text-[#fbbf24]" />
-                                </motion.button>
-                            ))}
+                                        {isBruna ? (
+                                            <div className="flex items-center gap-2 text-emerald-500 font-bold text-xs uppercase bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20">
+                                                <MessageCircle size={14} /> Combinar
+                                            </div>
+                                        ) : (
+                                            <ChevronRight className="text-zinc-600 group-hover:text-[#fbbf24]" />
+                                        )}
+                                    </motion.button>
+                                )
+                            })}
                         </div>
                     </motion.div>
                 )}
@@ -405,22 +449,45 @@ export default function Booking() {
                             </div>
                         </div>
 
-                        {/* Date Picker */}
-                        <div className="mb-6 flex-shrink-0">
-                            <h3 className="text-white font-bold mb-3 flex items-center gap-2"><Calendar className="w-4 h-4 text-[#fbbf24]" /> Selecione a Data</h3>
-                            <div className="flex gap-3 overflow-x-auto pb-4 px-1 snap-x mandatory scrollbar-hide mask-linear-fade">
-                                {Array.from({ length: 14 }).map((_, i) => {
-                                    const date = addDays(new Date(), i);
-                                    const isSelected = isSameDay(date, selectedDate);
-                                    return (
-                                        <button key={i} onClick={() => handleDateSelect(date)} className={`flex-shrink-0 w-20 h-24 rounded-2xl border flex flex-col items-center justify-center gap-1 transition-all snap-center ${isSelected ? 'bg-[#fbbf24] border-[#fbbf24] text-black scale-105 shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'bg-zinc-900/50 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'}`}>
-                                            <span className="text-xs font-bold uppercase">{format(date, 'EEE', { locale: ptBR })}</span>
-                                            <span className="text-2xl font-black">{format(date, 'dd')}</span>
-                                        </button>
-                                    )
-                                })}
+                        {/* Date Picker - Premium Carousel */}
+                        <div className="mb-4 flex-shrink-0 group relative">
+                            <div className="flex items-center justify-between mb-3 px-1">
+                                <h3 className="text-white font-bold flex items-center gap-2 text-sm"><Calendar className="w-4 h-4 text-[#fbbf24]" /> Selecione a Data</h3>
+                                <div className="flex gap-1">
+                                    <button onClick={() => scrollDates('left')} className="p-1 rounded-full bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"><ChevronLeft size={14} /></button>
+                                    <button onClick={() => scrollDates('right')} className="p-1 rounded-full bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"><ChevronRight size={14} /></button>
+                                </div>
+                            </div>
+
+                            <div className="relative">
+                                {/* Gradient Masks */}
+                                <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-[#09090b] to-transparent z-10 pointer-events-none" />
+                                <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-[#09090b] to-transparent z-10 pointer-events-none" />
+
+                                <div
+                                    ref={scrollContainerRef}
+                                    className="flex gap-2 overflow-x-auto pb-2 px-1 snap-x mandatory"
+                                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                                >
+                                    <style>{`div::-webkit-scrollbar { display: none; }`}</style>
+                                    {Array.from({ length: 24 }).map((_, i) => {
+                                        const date = addDays(new Date(), i);
+                                        // Skip Sundays if needed? User asked for "business days" approx. 
+                                        // For now, showing all days is safer unless explicit rule.
+                                        const isSelected = isSameDay(date, selectedDate);
+                                        return (
+                                            <DateCard
+                                                key={date.toISOString()}
+                                                date={date}
+                                                isSelected={isSelected}
+                                                onClick={() => handleDateSelect(date)}
+                                            />
+                                        )
+                                    })}
+                                </div>
                             </div>
                         </div>
+
                         {/* TIMELINE LIST (2-LEVEL) */}
                         <div className="flex-1 overflow-y-auto px-1 custom-scrollbar relative">
                             <AnimatePresence mode="wait">

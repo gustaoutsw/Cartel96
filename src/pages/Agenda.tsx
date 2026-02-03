@@ -7,6 +7,8 @@ import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 
+import { N8N_WEBHOOK_URL } from '../constants/api';
+
 // --- CONSTANTS ---
 const START_HOUR = 8;
 const END_HOUR = 22; // Extended to 21:00 (Last block starts at 21)
@@ -381,6 +383,28 @@ export default function Agenda() {
                     { onConflict: 'telefone' }
                 );
             }
+
+            // --- N8N WEBHOOK DISPATCH (Fire & Forget) ---
+            try {
+                const webhookPayload = {
+                    client_name: formData.cliente_nome,
+                    client_phone: formData.cliente_telefone,
+                    start_time: startTime.toISOString(),
+                    service_name: finalServiceLabel,
+                    professional_name: formData.professional
+                };
+
+                // No await - Fire and forget
+                fetch(N8N_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(webhookPayload)
+                }).catch(err => console.error("N8N Webhook Error (Fetch):", err));
+
+            } catch (err) {
+                console.error("N8N Webhook Error (Block):", err);
+            }
+            // ---------------------------------------------
 
             // Simple Alert or Toast replacement
             alert("Agendamento salvo!");
@@ -761,6 +785,28 @@ export default function Agenda() {
                             </div>
 
                             <div className="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 flex flex-col gap-3 mt-4">
+
+                                {/* DATE INPUT */}
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-zinc-500 font-bold uppercase">Data do Agendamento</span>
+                                    <input
+                                        type="date"
+                                        required
+                                        className="bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-white font-bold text-sm outline-none focus:border-[#d4af37]"
+                                        value={formData.data_horario ? format(parseISO(formData.data_horario), 'yyyy-MM-dd') : ''}
+                                        onChange={(e) => {
+                                            if (!e.target.value) return;
+                                            const current = formData.data_horario ? parseISO(formData.data_horario) : new Date();
+                                            const [year, month, day] = e.target.value.split('-').map(Number);
+                                            // Set new date keeping time
+                                            const newDate = new Date(current);
+                                            newDate.setFullYear(year);
+                                            newDate.setMonth(month - 1);
+                                            newDate.setDate(day);
+                                            setFormData({ ...formData, data_horario: newDate.toISOString() });
+                                        }}
+                                    />
+                                </div>
                                 <div className="flex items-center justify-between">
                                     <span className="text-xs text-zinc-500 font-bold uppercase">Início</span>
                                     <div className="flex items-center gap-2">
