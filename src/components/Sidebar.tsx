@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, LogOut, Lock, Eye, EyeOff, MessageSquare, Users, LayoutDashboard, Settings, X, Menu } from 'lucide-react';
+import { Calendar, LogOut, Lock, Eye, EyeOff, MessageSquare, Users, LayoutDashboard, Settings, X, Menu, Package, KanbanSquare } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
@@ -25,9 +25,15 @@ interface SidebarProps {
     onClose: () => void; // REQUIRED
 }
 
+// --- LISTA DE MENUS ATUALIZADA ---
 const MENU_ITEMS = [
     { icon: <LayoutDashboard size={20} />, label: 'Dashboard', path: '/dashboard', access: 'admin' },
     { icon: <Calendar size={20} />, label: 'Agenda', path: '/agenda', access: 'all' },
+
+    // NOVOS ITENS INSERIDOS AQUI
+    { icon: <KanbanSquare size={20} />, label: 'Pipeline CRM', path: '/crm', access: 'all' },
+    { icon: <Package size={20} />, label: 'Estoque', path: '/products', access: 'all' },
+
     { icon: <Users size={20} />, label: 'Clientes', path: '/clients', access: 'all' },
     { icon: <MessageSquare size={20} />, label: 'Mensagens', path: '/inbox', access: 'all' },
     { icon: <Settings size={20} />, label: 'Configurações', path: '/configuracoes', access: 'all' },

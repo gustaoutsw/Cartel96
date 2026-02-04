@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Scissors, Loader2, User, ChevronRight, Clock, DollarSign, Calendar, CheckCircle2, ChevronLeft, AlertCircle, LogOut, Sparkles, AlertTriangle, MessageCircle } from 'lucide-react';
+import { Scissors, Loader2, User, ChevronRight, Clock, DollarSign, Calendar, CheckCircle2, ChevronLeft, MessageCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { BARBERS } from '../../constants/barbers';
-import { format, addDays, isSameDay, addMinutes, parseISO, setHours, setMinutes, startOfDay, isBefore, isAfter, getHours, setSeconds, differenceInMinutes } from 'date-fns';
+import { format, addDays, isSameDay, addMinutes, parseISO, setHours, setMinutes, startOfDay, isBefore, isAfter, setSeconds } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // --- TYPES ---
@@ -14,6 +13,13 @@ interface Service {
     price: number;
     duration_minutes: number;
     professional: string;
+}
+
+interface Barber {
+    id: string;
+    nome: string; // Coluna do banco 'perfis'
+    cargo: string;
+    avatar_url?: string; // Caso adicione no futuro
 }
 
 interface AvailabilityBlock {
@@ -60,7 +66,9 @@ export default function Booking() {
     const [customerEmail, setCustomerEmail] = useState<string | null>(null);
 
     // Selections
-    const [selectedBarber, setSelectedBarber] = useState<any | null>(null);
+    const [barbers, setBarbers] = useState<Barber[]>([]); // Vindo do Banco
+    const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null);
+
     const [services, setServices] = useState<Service[]>([]);
     const [servicesLoading, setServicesLoading] = useState(false);
     const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -68,7 +76,6 @@ export default function Booking() {
     // Time Logic
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const [showSlots, setShowSlots] = useState(false);
-    const [availBlocks, setAvailBlocks] = useState<AvailabilityBlock[]>([]);
     const [slotsLoading, setSlotsLoading] = useState(false);
     const [selectedBlock, setSelectedBlock] = useState<AvailabilityBlock | null>(null);
 
@@ -85,7 +92,7 @@ export default function Booking() {
         }
     };
 
-    //   // --- INIT & AUTH ---
+    // --- INIT & AUTH ---
     useEffect(() => {
         const cached = localStorage.getItem('cartel_client');
         if (cached) {
@@ -96,12 +103,24 @@ export default function Booking() {
                 console.error("Error parsing cached client", e);
             }
         }
+
+        // Busca os barbeiros assim que carrega
+        fetchBarbers();
     }, []);
+
+    const fetchBarbers = async () => {
+        const { data } = await supabase.from('perfis').select('*').order('nome');
+        if (data) {
+            // Mapeia para garantir compatibilidade se o banco mudar
+            setBarbers(data);
+        }
+    };
 
     const handleContinue = async () => {
         if (!phone) return;
         setLoading(true);
         try {
+            // Verifica nas duas tabelas (clientes e agendamentos anteriores)
             const { data: apptData } = await supabase.from('appointments').select('client_name, client_email').eq('client_phone', phone).limit(1).maybeSingle();
             const { data: clientData } = await supabase.from('clientes').select('nome, email').eq('telefone', phone).maybeSingle();
 
@@ -144,22 +163,29 @@ export default function Booking() {
     };
 
     // --- SERVICE FLOW ---
-    const handleBarberSelect = async (barber: any) => {
+    const handleBarberSelect = async (barber: Barber) => {
         setSelectedBarber(barber);
         setStep(3);
-        fetchServices(barber.name);
+        fetchServices(barber.nome);
     };
 
     const fetchServices = async (barberName: string) => {
         setServicesLoading(true);
-        const { data } = await supabase.from('services').select('*').eq('professional', barberName).order('name');
+        // Busca serviços onde o profissional é o escolhido OU é null (qualquer um)
+        const { data } = await supabase
+            .from('services')
+            .select('*')
+            .or(`professional.eq.${barberName},professional.is.null`)
+            .order('name');
+
         if (data) setServices(data);
         setServicesLoading(false);
     };
 
     const handleServiceSelect = (service: Service) => {
-        // SPECIAL FLOW: Bruna -> WhatsApp
-        if (selectedBarber?.name?.toLowerCase().includes('bruna')) {
+        // SPECIAL FLOW: Bruna (Trancista) -> WhatsApp
+        // Verifica se é trança ou se a profissional é Bruna
+        if (selectedBarber?.nome?.toLowerCase().includes('bruna') || service.name.toLowerCase().includes('trança')) {
             const message = `Olá Bruna, vim pelo App da Cartel96 e gostaria de falar sobre um agendamento de ${service.name}.`;
             const url = `https://wa.me/554195572686?text=${encodeURIComponent(message)}`;
             window.open(url, '_blank');
@@ -173,8 +199,6 @@ export default function Booking() {
     };
 
     // --- 2-LEVEL TIMELINE LOGIC (Hour > 10min Slots) ---
-
-    // We store slots grouped by hour: { 8: [slot, slot], 9: [], ... }
     const [groupedSlots, setGroupedSlots] = useState<Record<number, AvailabilityBlock[]>>({});
     const [expandedHour, setExpandedHour] = useState<number | null>(null);
 
@@ -199,11 +223,11 @@ export default function Booking() {
         try {
             if (!selectedBarber || !selectedService) throw new Error("Missing selection");
 
-            // 1. Fetch Appointments
+            // 1. Fetch Appointments do Profissional no dia
             const { data: existingAppts, error } = await supabase
                 .from('appointments')
                 .select('start_time, end_time')
-                .eq('professional', selectedBarber.name)
+                .eq('professional', selectedBarber.nome) // Importante: nome exato do banco
                 .gte('start_time', startOfDay(date).toISOString())
                 .lt('start_time', addDays(startOfDay(date), 1).toISOString())
                 .order('start_time');
@@ -212,10 +236,9 @@ export default function Booking() {
 
             const serviceDuration = selectedService.duration_minutes || 30;
 
-            // Define Day Boundaries
-            const startHour = 8;
-            const endHour = 19; // Last slot starts max at 19:00? Or work ends at 19:00?
-            // Usually "Open 08-19" means closes at 19:00.
+            // Define Limites do Dia
+            const startHour = 9; // 09:00
+            const endHour = 20;  // 20:00
             const workEnd = setSeconds(setMinutes(setHours(date, endHour), 0), 0);
 
             // Prepare busy segments
@@ -225,34 +248,29 @@ export default function Booking() {
             }));
 
             const slotsByHour: Record<number, AvailabilityBlock[]> = {};
-
-            // 2. Generate ALL 10-minute candidates
-            // From 08:00 to 18:50 (assuming 19:00 is close time)
-            // If service is 30m, last slot can be 18:30 (ends 19:00).
-
             const now = new Date();
 
             for (let h = startHour; h < endHour; h++) {
                 slotsByHour[h] = [];
 
-                for (let m = 0; m < 60; m += 10) {
+                for (let m = 0; m < 60; m += 15) { // Intervalo de 15 min para otimizar agenda
                     const pointer = setSeconds(setMinutes(setHours(date, h), m), 0);
                     const slotEnd = addMinutes(pointer, serviceDuration);
 
                     // A. Check Past
                     if (isSameDay(date, now) && isBefore(pointer, addMinutes(now, 20))) {
-                        continue; // Too soon
+                        continue; // Muito cedo
                     }
 
                     // B. Check Work End
                     if (isAfter(slotEnd, workEnd)) {
-                        continue; // Exceeds closing time
+                        continue; // Passa do horário
                     }
 
                     // C. Check Collisions
                     let collision = false;
                     for (const seg of segments) {
-                        // Overlap: SegStart < SlotEnd && SegEnd > SlotStart
+                        // Overlap logic
                         if (isBefore(seg.start, slotEnd) && isAfter(seg.end, pointer)) {
                             collision = true;
                             break;
@@ -270,7 +288,6 @@ export default function Booking() {
                     }
                 }
             }
-
             setGroupedSlots(slotsByHour);
 
         } catch (e) {
@@ -281,15 +298,7 @@ export default function Booking() {
     };
 
     const handleHourClick = (hour: number) => {
-        if (expandedHour === hour) {
-            setExpandedHour(null);
-        } else {
-            setExpandedHour(hour);
-        }
-    };
-
-    const handleBlockSelect = (block: AvailabilityBlock) => {
-        setSelectedBlock(block);
+        setExpandedHour(expandedHour === hour ? null : hour);
     };
 
     const handleConfirmBooking = async () => {
@@ -300,20 +309,19 @@ export default function Booking() {
             const startTime = parseISO(selectedBlock.startIso);
             const endTime = addMinutes(startTime, selectedService.duration_minutes);
 
-            // 1. Upsert Client (First source of truth)
+            // 1. Atualiza Cliente
             if (phone && customerName) {
-                const { error: clientError } = await supabase.from('clientes').upsert(
+                await supabase.from('clientes').upsert(
                     { nome: customerName, telefone: phone, email: customerEmail || '' },
                     { onConflict: 'telefone' }
                 );
-                if (clientError) console.error("Error syncing client:", clientError);
             }
 
             const payload = {
                 client_name: customerName,
                 client_phone: phone,
                 client_email: customerEmail,
-                professional: selectedBarber.name,
+                professional: selectedBarber.nome,
                 service_name: selectedService.name,
                 duration_minutes: selectedService.duration_minutes,
                 start_time: startTime.toISOString(),
@@ -329,7 +337,7 @@ export default function Booking() {
             setStep(5);
         } catch (error) {
             console.error("Booking Error:", error);
-            alert("Houve um erro ao realizar o agendamento. Tente novamente.");
+            alert("Houve um erro. Tente novamente.");
         } finally {
             setLoading(false);
         }
@@ -382,24 +390,31 @@ export default function Booking() {
                     </motion.div>
                 )}
 
-                {/* STEP 2: BARBER */}
+                {/* STEP 2: BARBER (AGORA VINDO DO BANCO) */}
                 {step === 2 && (
                     <motion.div key="step2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-2xl">
                         <UserHeader />
                         <h2 className="text-center text-zinc-400 text-lg mb-8">Escolha um profissional:</h2>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {BARBERS.map(barber => (
-                                <motion.button key={barber.id} whileHover={{ scale: 1.02 }} onClick={() => handleBarberSelect(barber)} className="flex items-center gap-4 p-4 bg-zinc-900 border border-zinc-800 rounded-2xl hover:border-[#fbbf24] text-left">
-                                    <div className="w-16 h-16 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700">
-                                        {barber.avatar ? <img src={barber.avatar} className="w-full h-full object-cover" /> : <User className="w-full h-full p-4 text-zinc-500" />}
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xl font-bold text-white">{barber.name}</h3>
-                                        <p className="text-zinc-500 text-sm">{barber.specialty}</p>
-                                    </div>
-                                </motion.button>
-                            ))}
-                        </div>
+
+                        {/* Se não carregou barbeiros ainda */}
+                        {barbers.length === 0 ? (
+                            <div className="flex justify-center py-10 text-[#fbbf24]"><Loader2 className="animate-spin" /></div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {barbers.map(barber => (
+                                    <motion.button key={barber.id} whileHover={{ scale: 1.02 }} onClick={() => handleBarberSelect(barber)} className="flex items-center gap-4 p-4 bg-zinc-900 border border-zinc-800 rounded-2xl hover:border-[#fbbf24] text-left group">
+                                        <div className="w-16 h-16 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700 group-hover:border-[#fbbf24] transition-colors flex items-center justify-center">
+                                            {/* Aqui poderiamos usar barber.avatar_url se tivesse */}
+                                            <User className="w-8 h-8 text-zinc-500 group-hover:text-[#fbbf24]" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xl font-bold text-white group-hover:text-[#fbbf24]">{barber.nome}</h3>
+                                            <p className="text-zinc-500 text-sm capitalize">{barber.cargo}</p>
+                                        </div>
+                                    </motion.button>
+                                ))}
+                            </div>
+                        )}
                     </motion.div>
                 )}
 
@@ -409,11 +424,13 @@ export default function Booking() {
                         <UserHeader />
                         <div className="flex items-center gap-4 mb-8">
                             <button onClick={() => setStep(2)} className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center hover:border-[#fbbf24] text-zinc-400"><ChevronLeft /></button>
-                            <h2 className="text-2xl font-bold text-white">{selectedBarber?.name}</h2>
+                            <h2 className="text-2xl font-bold text-white">{selectedBarber?.nome}</h2>
                         </div>
                         <div className="space-y-3">
-                            {servicesLoading ? <div className="py-20 flex justify-center text-[#fbbf24]"><Loader2 className="animate-spin w-8 h-8" /></div> : services.map(service => {
-                                const isBruna = selectedBarber?.name?.toLowerCase().includes('bruna');
+                            {servicesLoading ? <div className="py-20 flex justify-center text-[#fbbf24]"><Loader2 className="animate-spin w-8 h-8" /></div> : services.length === 0 ? (
+                                <p className="text-center text-zinc-500">Nenhum serviço disponível para este profissional.</p>
+                            ) : services.map(service => {
+                                const isBruna = selectedBarber?.nome?.toLowerCase().includes('bruna');
                                 return (
                                     <motion.button key={service.id} onClick={() => handleServiceSelect(service)} className="w-full bg-zinc-900/50 border border-zinc-800 p-5 rounded-xl flex items-center justify-between hover:bg-zinc-900 hover:border-[#fbbf24] transition-all text-left group">
                                         <div>
@@ -437,7 +454,7 @@ export default function Booking() {
                     </motion.div>
                 )}
 
-                {/* STEP 4: TWO-LEVEL TIMELINE */}
+                {/* STEP 4: TIMELINE */}
                 {step === 4 && (
                     <motion.div key="step4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-xl pb-32 h-[85vh] flex flex-col">
                         <UserHeader />
@@ -445,11 +462,11 @@ export default function Booking() {
                             <button onClick={() => setStep(3)} className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center hover:border-[#fbbf24] text-zinc-400"><ChevronLeft /></button>
                             <div>
                                 <p className="text-zinc-500 text-xs font-bold uppercase">Agendamento</p>
-                                <h2 className="text-xl font-bold text-white">{selectedBarber?.name} • {selectedService?.name}</h2>
+                                <h2 className="text-xl font-bold text-white">{selectedBarber?.nome} • {selectedService?.name}</h2>
                             </div>
                         </div>
 
-                        {/* Date Picker - Premium Carousel */}
+                        {/* Date Picker */}
                         <div className="mb-4 flex-shrink-0 group relative">
                             <div className="flex items-center justify-between mb-3 px-1">
                                 <h3 className="text-white font-bold flex items-center gap-2 text-sm"><Calendar className="w-4 h-4 text-[#fbbf24]" /> Selecione a Data</h3>
@@ -460,35 +477,20 @@ export default function Booking() {
                             </div>
 
                             <div className="relative">
-                                {/* Gradient Masks */}
                                 <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-[#09090b] to-transparent z-10 pointer-events-none" />
                                 <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-[#09090b] to-transparent z-10 pointer-events-none" />
-
-                                <div
-                                    ref={scrollContainerRef}
-                                    className="flex gap-2 overflow-x-auto pb-2 px-1 snap-x mandatory"
-                                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                                >
+                                <div ref={scrollContainerRef} className="flex gap-2 overflow-x-auto pb-2 px-1 snap-x mandatory" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                                     <style>{`div::-webkit-scrollbar { display: none; }`}</style>
                                     {Array.from({ length: 24 }).map((_, i) => {
                                         const date = addDays(new Date(), i);
-                                        // Skip Sundays if needed? User asked for "business days" approx. 
-                                        // For now, showing all days is safer unless explicit rule.
                                         const isSelected = isSameDay(date, selectedDate);
-                                        return (
-                                            <DateCard
-                                                key={date.toISOString()}
-                                                date={date}
-                                                isSelected={isSelected}
-                                                onClick={() => handleDateSelect(date)}
-                                            />
-                                        )
+                                        return <DateCard key={date.toISOString()} date={date} isSelected={isSelected} onClick={() => handleDateSelect(date)} />
                                     })}
                                 </div>
                             </div>
                         </div>
 
-                        {/* TIMELINE LIST (2-LEVEL) */}
+                        {/* TIMELINE LIST */}
                         <div className="flex-1 overflow-y-auto px-1 custom-scrollbar relative">
                             <AnimatePresence mode="wait">
                                 {showSlots && (
@@ -503,52 +505,27 @@ export default function Booking() {
                                                 Nenhum horário disponível para hoje.
                                             </div>
                                         ) : (
-                                            // Iterate '08' to '18'
                                             Object.entries(groupedSlots).map(([hourStr, slots]) => {
                                                 const hour = parseInt(hourStr);
-                                                if (slots.length === 0) return null; // Hide empty hours
-
+                                                if (slots.length === 0) return null;
                                                 const isExpanded = expandedHour === hour;
-
                                                 return (
                                                     <motion.div key={hour} variants={itemVariants} className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden backdrop-blur-sm">
-                                                        {/* Hour Header */}
-                                                        <button
-                                                            onClick={() => handleHourClick(hour)}
-                                                            className={`w-full p-4 flex items-center justify-between hover:bg-zinc-800/50 transition-colors ${isExpanded ? 'bg-zinc-800/80' : ''}`}
-                                                        >
+                                                        <button onClick={() => handleHourClick(hour)} className={`w-full p-4 flex items-center justify-between hover:bg-zinc-800/50 transition-colors ${isExpanded ? 'bg-zinc-800/80' : ''}`}>
                                                             <div className="flex items-center gap-4">
-                                                                <div className={`text-2xl font-black ${isExpanded ? 'text-[#fbbf24]' : 'text-white'}`}>
-                                                                    {hour.toString().padStart(2, '0')}:00
-                                                                </div>
-                                                                <div className="text-xs font-bold text-emerald-500 bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-900/50">
-                                                                    {slots.length} opções
-                                                                </div>
+                                                                <div className={`text-2xl font-black ${isExpanded ? 'text-[#fbbf24]' : 'text-white'}`}>{hour.toString().padStart(2, '0')}:00</div>
+                                                                <div className="text-xs font-bold text-emerald-500 bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-900/50">{slots.length} opções</div>
                                                             </div>
                                                             <ChevronRight className={`text-zinc-500 transition-transform ${isExpanded ? 'rotate-90 text-[#fbbf24]' : ''}`} />
                                                         </button>
-
-                                                        {/* Sub-slots Grid */}
                                                         <AnimatePresence>
                                                             {isExpanded && (
-                                                                <motion.div
-                                                                    initial={{ height: 0, opacity: 0 }}
-                                                                    animate={{ height: "auto", opacity: 1 }}
-                                                                    exit={{ height: 0, opacity: 0 }}
-                                                                    className="overflow-hidden bg-zinc-950/30"
-                                                                >
+                                                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden bg-zinc-950/30">
                                                                     <div className="p-4 grid grid-cols-3 gap-3">
                                                                         {slots.map((slot, idx) => {
                                                                             const isSelected = selectedBlock?.startIso === slot.startIso;
                                                                             return (
-                                                                                <button
-                                                                                    key={idx}
-                                                                                    onClick={() => handleBlockSelect(slot)}
-                                                                                    className={`py-3 rounded-xl border font-bold text-sm transition-all ${isSelected
-                                                                                        ? 'bg-[#fbbf24] border-[#fbbf24] text-black shadow-lg scale-105'
-                                                                                        : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-[#fbbf24] hover:text-[#fbbf24]'
-                                                                                        }`}
-                                                                                >
+                                                                                <button key={idx} onClick={() => setSelectedBlock(slot)} className={`py-3 rounded-xl border font-bold text-sm transition-all ${isSelected ? 'bg-[#fbbf24] border-[#fbbf24] text-black shadow-lg scale-105' : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-[#fbbf24] hover:text-[#fbbf24]'}`}>
                                                                                     {slot.label}
                                                                                 </button>
                                                                             )
@@ -568,7 +545,7 @@ export default function Booking() {
                     </motion.div>
                 )}
 
-                {/* CONFIRMATION FAB (OUTSIDE SCROLL) */}
+                {/* CONFIRMATION FAB */}
                 <AnimatePresence>
                     {step === 4 && selectedBlock && (
                         <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50 }} className="fixed bottom-6 left-4 right-4 max-w-xl mx-auto z-50">
@@ -588,7 +565,6 @@ export default function Booking() {
                         <button onClick={() => window.location.reload()} className="w-full py-3 rounded-xl bg-zinc-800 text-white font-bold">Voltar</button>
                     </motion.div>
                 )}
-
             </AnimatePresence>
         </div>
     );

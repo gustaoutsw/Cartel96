@@ -1,258 +1,341 @@
-import { useState, useEffect } from 'react';
-import { Search, Plus, Phone, Trash2, Edit2, User, Loader2 } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Search, AlertCircle, User, MessageSquare, Loader2, RefreshCw, X, Clock, Scissors, Phone, ArrowRight } from 'lucide-react';
+import { format, differenceInDays, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { supabase } from '../lib/supabase';
-import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
-interface Client {
-    id?: string; // ID from 'clients' table (optional if only from appointments)
-    name: string;
-    phone: string;
-    total_appointments: number;
-    last_visit: string | null;
-    source: 'registered' | 'history';
+type ClientStatus = 'qualificado' | 'agendado' | 'risco' | 'vip' | 'novo';
+
+interface AppointmentHistory {
+    id: string;
+    date: string;
+    service: string;
+    price: number;
+    professional: string;
+}
+
+interface ClientCRM {
+    id: string;
+    nome: string;
+    telefone: string;
+    ultimoServico: string;
+    dataUltimaVisita: string;
+    valorGasto: number;
+    totalVisitas: number;
+    status: ClientStatus;
+    history: AppointmentHistory[];
 }
 
 export default function Clients() {
-    const [clients, setClients] = useState<Client[]>([]);
+    const navigate = useNavigate();
+    const [searchTerm, setSearchTerm] = useState("");
+    const [activeFilter, setActiveFilter] = useState<'todos' | ClientStatus>('todos');
+    const [clients, setClients] = useState<ClientCRM[]>([]);
     const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedClient, setSelectedClient] = useState<ClientCRM | null>(null);
 
     useEffect(() => {
-        fetchClientsData();
+        fetchClients();
     }, []);
 
-    const fetchClientsData = async () => {
+    const fetchClients = async () => {
         setLoading(true);
-        try {
-            // 1. Fetch Registered Clients
-            const { data: registeredData, error: regError } = await supabase
-                .from('clientes')
-                .select('*');
+        const { data: appointments, error } = await supabase
+            .from('appointments')
+            .select('*')
+            .neq('status', 'cancelado')
+            .order('start_time', { ascending: false });
 
-            if (regError) throw regError;
-
-            // 2. Fetch Appointments for History Aggregation
-            // Optimization: We could use specific date ranges or limits, but for now fetching all for accurate history
-            const { data: appointmentsData, error: apptError } = await supabase
-                .from('agendamentos')
-                .select('cliente_nome, cliente_telefone, data_horario');
-
-            if (apptError) throw apptError;
-
-            // 3. Process & Merge Data
-            const clientMap = new Map<string, Client>();
-
-            // A. Process Appointments (History)
-            appointmentsData?.forEach(appt => {
-                const phone = appt.cliente_telefone || 'SEM_TELEFONE';
-                // Clean phone slightly for matching if needed, but assuming consistency for now
-
-                const existing = clientMap.get(phone);
-
-                if (existing) {
-                    existing.total_appointments += 1;
-                    if (appt.data_horario > (existing.last_visit || '')) {
-                        existing.last_visit = appt.data_horario;
-                    }
-                    // Keep most recent name if needed, or rely on registered
-                } else {
-                    clientMap.set(phone, {
-                        name: appt.cliente_nome,
-                        phone: phone,
-                        total_appointments: 1,
-                        last_visit: appt.data_horario,
-                        source: 'history'
-                    });
-                }
-            });
-
-            // B. Process Registered Clients (Overlay)
-            registeredData?.forEach((reg: any) => {
-                const phone = reg.telefone;
-                const name = reg.nome;
-
-                const existing = clientMap.get(phone);
-                if (existing) {
-                    existing.id = reg.id;
-                    existing.name = name; // Authoritative name
-                    existing.source = 'registered';
-                } else {
-                    clientMap.set(phone, {
-                        id: reg.id,
-                        name: name,
-                        phone: phone,
-                        total_appointments: 0,
-                        last_visit: null,
-                        source: 'registered'
-                    });
-                }
-            });
-
-            // Convert to Array & Remove 'SEM_TELEFONE' junk if any
-            const mergedList = Array.from(clientMap.values()).filter(c => c.phone !== 'SEM_TELEFONE');
-
-            // Sort by Name
-            mergedList.sort((a, b) => a.name.localeCompare(b.name));
-
-            setClients(mergedList);
-
-        } catch (error) {
-            console.error('Error fetching clients:', error);
-        } finally {
+        if (error) {
+            console.error('Erro:', error);
             setLoading(false);
+            return;
+        }
+
+        if (appointments) {
+            const clientMap = new Map<string, ClientCRM>();
+
+            appointments.forEach(appt => {
+                const rawPhone = appt.client_phone || '';
+                const key = `${appt.client_name.trim()}-${rawPhone}`;
+
+                const historyItem: AppointmentHistory = {
+                    id: appt.id,
+                    date: appt.start_time,
+                    service: appt.service_name,
+                    price: Number(appt.price) || 0,
+                    professional: appt.professional || 'Barbeiro'
+                };
+
+                if (!clientMap.has(key)) {
+                    clientMap.set(key, {
+                        id: key,
+                        nome: appt.client_name,
+                        telefone: rawPhone || 'Sem número',
+                        ultimoServico: appt.service_name,
+                        dataUltimaVisita: appt.start_time,
+                        valorGasto: 0,
+                        totalVisitas: 0,
+                        status: 'novo',
+                        history: []
+                    });
+                }
+
+                const client = clientMap.get(key)!;
+                client.valorGasto += Number(appt.price) || 0;
+                client.totalVisitas += 1;
+                client.history.push(historyItem);
+
+                if (new Date(appt.start_time) > new Date(client.dataUltimaVisita)) {
+                    client.dataUltimaVisita = appt.start_time;
+                    client.ultimoServico = appt.service_name;
+                }
+            });
+
+            const processedClients = Array.from(clientMap.values()).map(client => {
+                const daysSinceLastVisit = differenceInDays(new Date(), new Date(client.dataUltimaVisita));
+                let status: ClientStatus = 'qualificado';
+
+                // Lógica Ajustada: Novo tem prioridade de visualização se tiver poucas visitas
+                if (client.totalVisitas <= 2 && daysSinceLastVisit < 30) {
+                    status = 'novo';
+                }
+                else if (client.valorGasto > 400) {
+                    status = 'vip';
+                }
+                else if (daysSinceLastVisit > 45) {
+                    status = 'risco';
+                }
+
+                client.history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                return { ...client, status };
+            });
+
+            processedClients.sort((a, b) => new Date(b.dataUltimaVisita).getTime() - new Date(a.dataUltimaVisita).getTime());
+            setClients(processedClients);
+        }
+        setLoading(false);
+    };
+
+    const filteredClients = useMemo(() => {
+        return clients.filter(client => {
+            const matchesSearch = client.nome.toLowerCase().includes(searchTerm.toLowerCase()) || client.telefone.includes(searchTerm);
+            const matchesFilter = activeFilter === 'todos' || client.status === activeFilter;
+            return matchesSearch && matchesFilter;
+        });
+    }, [searchTerm, activeFilter, clients]);
+
+    const getStatusStyle = (status: ClientStatus) => {
+        switch (status) {
+            case 'vip': return 'bg-[#d4af37]/10 text-[#d4af37] border-[#d4af37]/20 shadow-[0_0_10px_rgba(212,175,55,0.1)]';
+            case 'risco': return 'bg-red-500/10 text-red-500 border-red-500/20';
+            case 'novo': return 'bg-blue-500/10 text-blue-400 border-blue-500/20'; // Mudei novo para Azul pra destacar
+            default: return 'bg-zinc-800 text-zinc-400 border-zinc-700';
         }
     };
 
-    const handleDelete = async (phone: string, id?: string) => {
-        if (!confirm('Tem certeza que deseja remover este cliente? O histórico de agendamentos será mantido, mas o cadastro será removido.')) return;
-
-        // If it's a registered client, delete from DB
-        if (id) {
-            const { error } = await supabase.from('clientes').delete().eq('id', id);
-            if (error) {
-                alert('Erro ao excluir do banco de dados');
-                return;
-            }
-        }
-
-        // Use optimistic update for UI
-        setClients(prev => prev.filter(c => c.phone !== phone));
+    // --- AÇÃO SEGURA: Sempre vai para o Inbox ---
+    const handleGoToInbox = () => {
+        navigate('/inbox');
     };
-
-    const handleWhatsApp = (phone: string) => {
-        const cleanPhone = phone.replace(/\D/g, '');
-        window.open(`https://wa.me/${cleanPhone}`, '_blank');
-    };
-
-    const filteredClients = clients.filter(c =>
-        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.phone.includes(searchTerm)
-    );
 
     return (
-        <div className="h-full flex flex-col bg-zinc-950 p-4 md:p-8 overflow-hidden">
+        <div className="h-full flex flex-col bg-zinc-950 p-6 overflow-hidden relative">
             {/* Header */}
-            <div className="shrink-0 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8">
+            <div className="shrink-0 flex flex-col md:flex-row items-start md:items-end justify-between gap-6 mb-8">
                 <div>
                     <h1 className="text-3xl font-serif font-black text-white uppercase tracking-tighter flex items-center gap-3">
                         <User className="text-[#d4af37]" size={32} />
-                        Clientes
+                        Carteira de Clientes
                     </h1>
-                    <p className="text-zinc-500 text-sm font-bold uppercase tracking-widest mt-1">
-                        Gerenciamento & Histórico
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-2">
+                        {clients.length} Clientes Identificados
                     </p>
                 </div>
-
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-64">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Buscar nome ou telefone..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm text-zinc-200 focus:outline-none focus:border-[#d4af37] transition-colors"
-                        />
-                    </div>
-                    <button className="bg-[#d4af37] text-black px-4 py-3 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-[#ffe180] transition-colors flex items-center gap-2 shadow-lg shadow-[#d4af37]/20">
-                        <Plus size={16} /> <span className="hidden md:inline">Novo Cliente</span>
+                <div className="flex gap-3">
+                    <button
+                        onClick={fetchClients}
+                        className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl hover:text-[#d4af37] text-zinc-500 transition-all hover:border-[#d4af37]/30"
+                        title="Atualizar Lista"
+                    >
+                        <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
                     </button>
                 </div>
             </div>
 
-            {/* List */}
-            <div className="flex-1 bg-zinc-900/30 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col">
-                <div className="flex-1 overflow-auto custom-scrollbar">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="sticky top-0 z-10">
-                            <tr className="border-b border-zinc-800 bg-zinc-900 shadow-md">
-                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Cliente</th>
-                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Telefone</th>
-                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Agendamentos</th>
-                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Última Visita</th>
-                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800/50">
-                            {loading ? (
-                                <tr>
-                                    <td colSpan={5} className="p-12 text-center text-zinc-500">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <Loader2 size={24} className="animate-spin" />
-                                            <span className="text-xs uppercase tracking-widest">Carregando carteira de clientes...</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : filteredClients.length === 0 ? (
-                                <tr>
-                                    <td colSpan={5} className="p-12 text-center text-zinc-500 text-sm">
-                                        Nenhum cliente encontrado.
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredClients.map((client, idx) => (
-                                    <motion.tr
-                                        key={client.id || client.phone}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: idx * 0.05 }}
-                                        className="hover:bg-zinc-900/50 group transition-colors"
-                                    >
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-[#d4af37] font-bold border border-zinc-700">
-                                                    {client.name.charAt(0).toUpperCase()}
-                                                </div>
-                                                <div>
-                                                    <div className="font-bold text-zinc-200">{client.name}</div>
-                                                    {client.source === 'registered' && (
-                                                        <div className="text-[9px] text-[#d4af37] uppercase tracking-widest font-black flex items-center gap-1">
-                                                            <User size={8} /> Cadastrado
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="p-4">
-                                            <button
-                                                onClick={() => handleWhatsApp(client.phone)}
-                                                className="flex items-center gap-2 text-zinc-400 hover:text-green-500 transition-colors text-sm font-mono group/phone"
-                                            >
-                                                <Phone size={14} />
-                                                <span className="group-hover/phone:underline">{client.phone}</span>
-                                            </button>
-                                        </td>
-                                        <td className="p-4">
-                                            <div className="inline-flex items-center px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-300">
-                                                {client.total_appointments}
-                                            </div>
-                                        </td>
-                                        <td className="p-4 text-sm text-zinc-400">
-                                            {client.last_visit
-                                                ? new Date(client.last_visit).toLocaleDateString()
-                                                : <span className="text-zinc-600">-</span>
-                                            }
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors">
-                                                    <Edit2 size={16} />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDelete(client.phone, client.id)}
-                                                    className="p-2 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </motion.tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+            {/* Filtros */}
+            <div className="shrink-0 flex flex-col lg:flex-row gap-6 mb-8">
+                <div className="lg:w-1/3 relative group">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#d4af37] transition-colors" size={18} />
+                    <input
+                        placeholder="Buscar por nome ou telefone..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-sm font-bold text-white focus:border-[#d4af37]/50 outline-none transition-all placeholder:text-zinc-700"
+                    />
+                </div>
+                <div className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide items-center">
+                    {['todos', 'vip', 'risco', 'novo'].map(f => (
+                        <button
+                            key={f}
+                            onClick={() => setActiveFilter(f as any)}
+                            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border whitespace-nowrap ${activeFilter === f ? 'bg-[#d4af37] text-black border-[#d4af37] shadow-lg shadow-[#d4af37]/20 scale-105' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300'}`}
+                        >
+                            {f === 'todos' ? 'Todos' : f}
+                        </button>
+                    ))}
                 </div>
             </div>
+
+            {/* Lista */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-20">
+                {loading ? (
+                    <div className="flex flex-col justify-center items-center h-full gap-4">
+                        <Loader2 size={40} className="animate-spin text-[#d4af37]" />
+                        <span className="text-zinc-500 text-xs uppercase tracking-widest animate-pulse">Processando dados...</span>
+                    </div>
+                ) : filteredClients.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-zinc-800">
+                        <AlertCircle size={80} className="opacity-10 mb-6" />
+                        <p className="font-serif font-black text-xl uppercase tracking-widest opacity-20">Nenhum cliente encontrado</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {filteredClients.map((client, idx) => (
+                            <motion.div
+                                key={client.id}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.05 }}
+                                className="p-6 rounded-[32px] border border-zinc-800/60 bg-zinc-900/40 backdrop-blur-sm hover:border-[#d4af37]/30 hover:bg-zinc-900/60 transition-all duration-300 group relative overflow-hidden"
+                            >
+                                {/* Faixa de Risco */}
+                                {client.status === 'risco' && (
+                                    <div className="absolute top-0 left-0 w-1 h-full bg-red-600/50" />
+                                )}
+
+                                <div className="flex justify-between items-start mb-6">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-[#d4af37] font-serif font-black text-lg shadow-inner uppercase">
+                                            {client.nome.charAt(0)}
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-bold text-white leading-tight truncate max-w-[150px]">{client.nome}</h3>
+                                            <span className={`inline-block mt-1 px-3 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${getStatusStyle(client.status)}`}>
+                                                {client.status}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={handleGoToInbox}
+                                            className="p-2.5 bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-xl transition-colors"
+                                            title="Mensagem"
+                                        >
+                                            <MessageSquare size={16} />
+                                        </button>
+
+                                        <button
+                                            onClick={() => setSelectedClient(client)}
+                                            className="p-2.5 bg-zinc-800 text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-700 rounded-xl transition-colors"
+                                            title="Histórico"
+                                        >
+                                            <Clock size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 py-4 border-t border-zinc-800/50 border-b border-zinc-800/50 mb-4">
+                                    <div>
+                                        <p className="text-zinc-600 text-[9px] font-black uppercase tracking-widest mb-1">Total Investido</p>
+                                        <p className="text-white font-black text-lg tracking-tighter flex items-center gap-1">
+                                            <span className="text-[#d4af37] text-xs">R$</span> {client.valorGasto.toFixed(2)}
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-zinc-600 text-[9px] font-black uppercase tracking-widest mb-1">Última Visita</p>
+                                        <p className="text-zinc-300 font-bold text-sm uppercase">
+                                            {format(parseISO(client.dataUltimaVisita), "dd MMM yy", { locale: ptBR }).replace('.', '')}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                    <span className="flex items-center gap-1 bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-900">
+                                        <Scissors size={12} /> {client.totalVisitas} Cortes
+                                    </span>
+
+                                    {/* Link Telefone -> Inbox */}
+                                    <button onClick={handleGoToInbox} className="flex items-center gap-1 hover:text-white transition-colors">
+                                        <Phone size={12} /> {client.telefone} <ArrowRight size={10} />
+                                    </button>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* MODAL DE HISTÓRICO CORRIGIDO (Z-INDEX ALTO) */}
+            <AnimatePresence>
+                {selectedClient && (
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh] relative"
+                        >
+                            <div className="p-6 border-b border-zinc-800 bg-zinc-950 rounded-t-3xl flex justify-between items-center shrink-0">
+                                <div>
+                                    <h3 className="text-xl font-serif font-black text-white italic">{selectedClient.nome}</h3>
+                                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Histórico Completo</p>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedClient(null)}
+                                    className="p-2 bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="overflow-y-auto custom-scrollbar flex-1 p-6 space-y-3">
+                                {selectedClient.history.length === 0 ? (
+                                    <p className="text-center text-zinc-500 py-8">Nenhum histórico detalhado disponível.</p>
+                                ) : (
+                                    selectedClient.history.map((item, i) => (
+                                        <div key={i} className="flex justify-between items-center p-4 bg-black/40 rounded-2xl border border-zinc-800/50 hover:border-[#d4af37]/30 transition-colors">
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-3 bg-zinc-900 rounded-xl text-[#d4af37] border border-zinc-800">
+                                                    <Scissors size={18} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-white font-bold text-sm">{item.service}</p>
+                                                    <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider">
+                                                        {format(parseISO(item.date), "dd 'de' MMMM • HH:mm", { locale: ptBR })}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-[#d4af37] font-black text-sm">R$ {item.price.toFixed(2)}</p>
+                                                <p className="text-zinc-600 text-[9px] font-bold uppercase">{item.professional}</p>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            <div className="p-6 bg-zinc-950 border-t border-zinc-800 rounded-b-3xl flex justify-between items-center shrink-0">
+                                <span className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Total Investido</span>
+                                <span className="text-2xl font-serif font-black text-white">R$ {selectedClient.valorGasto.toFixed(2)}</span>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

@@ -1,329 +1,311 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Package, ShoppingCart, Plus, Minus, Truck, AlertTriangle, Check, DollarSign, X, History, User } from 'lucide-react';
-
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Trash2, Package, ShoppingBag, X, Upload, Loader2, Edit, Minus, Search, Filter, TrendingUp } from 'lucide-react';
 
-
-// --- TYPES ---
 interface Product {
-    id: number;
+    id: string;
     name: string;
-    category: 'cabelo' | 'barba' | 'rosto' | 'acessorios';
-    price: number;
-    cost: number;
+    price: number; // Preço de Venda
+    cost_price: number; // Preço de Custo
     stock: number;
-    min_stock: number; // Changed to snake_case to match typical DB
-    image_url: string; // Changed to snake_case
-    supplier: string;
+    category: string;
+    image_url: string | null;
 }
 
-interface SaleLog {
-    id: number;
-    product: string;
-    value: number;
-    barber: string;
-    date: Date;
-}
-
-// --- MOCK DATA FOR HISTORY ONLY (For now) ---
-const SALES_HISTORY: SaleLog[] = [
-    { id: 101, product: "Pomada Matte Gold", value: 89.90, barber: "Gustavo", date: new Date() },
-    { id: 102, product: "Óleo de Barba", value: 65.00, barber: "Lucas", date: new Date(Date.now() - 3600000) },
-    { id: 103, product: "Minoxidil Turbo", value: 120.00, barber: "Beto", date: new Date(Date.now() - 7200000) },
-    { id: 104, product: "Pomada Matte Gold", value: 89.90, barber: "Gustavo", date: new Date(Date.now() - 10800000) },
-    { id: 105, product: "Shampoo Anti-Queda", value: 75.00, barber: "Lucas", date: new Date(Date.now() - 86400000) },
-];
+const CATEGORIES = ['Todos', 'Cabelo', 'Barba', 'Bebidas', 'Eletrônicos', 'Outros'];
 
 export default function StockShop() {
-    const [viewMode, setViewMode] = useState<'stock' | 'shop'>('stock');
-    const [selectedCategory, setSelectedCategory] = useState<string>('todos');
-    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-    const [cartQuantity, setCartQuantity] = useState(1);
     const [products, setProducts] = useState<Product[]>([]);
+    const [showModal, setShowModal] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [uploading, setUploading] = useState(false);
 
-    // Initial Fetch
-    React.useEffect(() => {
+    // Filtros
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('Todos');
+
+    // Estado do Formulário
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [formData, setFormData] = useState({
+        name: '', price: '', cost_price: '', stock: '', category: 'Outros', image_url: ''
+    });
+
+    useEffect(() => {
         fetchProducts();
     }, []);
 
     const fetchProducts = async () => {
-        // Changed table name to 'estoque' as requested by user
-        const { data, error } = await supabase.from('estoque').select('*');
-        if (error) {
-            console.error('Error fetching estoque:', error);
-        } else {
-            if (!data || data.length === 0) {
-                // High-quality mock products for Step 4
-                const mockProducts: Product[] = [
-                    { id: 1, name: "Pomada Matte Gold", category: 'cabelo', price: 89.90, cost: 45.00, stock: 12, min_stock: 5, image_url: "https://images.unsplash.com/photo-1599351431247-f13b3828e239?auto=format&fit=crop&q=80&w=400", supplier: "Gold Hair Co." },
-                    { id: 2, name: "Óleo de Barba Royal", category: 'barba', price: 65.00, cost: 30.00, stock: 2, min_stock: 5, image_url: "https://images.unsplash.com/photo-1626285861696-9f0bf5a49c6d?auto=format&fit=crop&q=80&w=400", supplier: "Beard King" },
-                    { id: 3, name: "Shampoo Detox Mentol", category: 'cabelo', price: 75.00, cost: 35.00, stock: 8, min_stock: 3, image_url: "https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?auto=format&fit=crop&q=80&w=400", supplier: "Fresh Care" },
-                    { id: 4, name: "Escova de Madeira", category: 'acessorios', price: 45.00, cost: 15.00, stock: 1, min_stock: 5, image_url: "https://images.unsplash.com/photo-1590540179852-2110a3003058?auto=format&fit=crop&q=80&w=400", supplier: "Eco Styles" },
-                    { id: 5, name: "Pós Barba Ice", category: 'rosto', price: 55.00, cost: 25.00, stock: 15, min_stock: 10, image_url: "https://images.unsplash.com/photo-1619451334792-150fd785ee74?auto=format&fit=crop&q=80&w=400", supplier: "Face Fresh" }
-                ];
-                setProducts(mockProducts);
-            } else {
-                const mappedProducts = data.map((item: any) => ({
-                    id: item.id,
-                    name: item.nome,
-                    category: item.categoria,
-                    price: item.preco,
-                    cost: item.custo,
-                    stock: item.quantidade,
-                    min_stock: item.min_quantidade,
-                    image_url: item.imagem_url,
-                    supplier: item.fornecedor
-                }));
-                setProducts(mappedProducts);
-            }
+        setLoading(true);
+        const { data } = await supabase.from('products').select('*').order('name');
+        if (data) setProducts(data);
+        setLoading(false);
+    };
+
+    // --- LÓGICA DE FILTRO ---
+    const filteredProducts = products.filter(product => {
+        const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesCategory = selectedCategory === 'Todos' || product.category === selectedCategory;
+        return matchesSearch && matchesCategory;
+    });
+
+    // --- AÇÕES ---
+    const handleOpenCreate = () => {
+        setEditingId(null);
+        setFormData({ name: '', price: '', cost_price: '', stock: '', category: 'Outros', image_url: '' });
+        setShowModal(true);
+    };
+
+    const handleOpenEdit = (prod: Product) => {
+        setEditingId(prod.id);
+        setFormData({
+            name: prod.name,
+            price: prod.price.toString(),
+            cost_price: (prod.cost_price || 0).toString(),
+            stock: prod.stock.toString(),
+            category: prod.category || 'Outros',
+            image_url: prod.image_url || ''
+        });
+        setShowModal(true);
+    };
+
+    const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (!event.target.files || event.target.files.length === 0) return;
+        const file = event.target.files[0];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random()}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        setUploading(true);
+        try {
+            const { error: uploadError } = await supabase.storage.from('products').upload(filePath, file);
+            if (uploadError) throw uploadError;
+            const { data } = supabase.storage.from('products').getPublicUrl(filePath);
+            setFormData(prev => ({ ...prev, image_url: data.publicUrl }));
+        } catch (error: any) {
+            alert('Erro: ' + error.message);
+        } finally {
+            setUploading(false);
         }
     };
 
-    // POS STATE
-    const [lastClient] = useState("Ricardo Oliveira"); // Mocked "Last Client"
+    const handleSave = async () => {
+        if (!formData.name || !formData.price) return alert("Nome e Preço são obrigatórios");
 
-    const filteredProducts = products.filter(p => selectedCategory === 'todos' || p.category === selectedCategory);
+        const payload = {
+            name: formData.name,
+            price: parseFloat(formData.price.toString().replace(',', '.')),
+            cost_price: parseFloat(formData.cost_price.toString().replace(',', '.')) || 0,
+            stock: parseInt(formData.stock) || 0,
+            category: formData.category,
+            image_url: formData.image_url || null
+        };
 
-    const handleSellClick = (product: Product) => {
-        setCartQuantity(1);
-        setSelectedProduct(product);
+        if (editingId) {
+            await supabase.from('products').update(payload).eq('id', editingId);
+        } else {
+            await supabase.from('products').insert([payload]);
+        }
+        setShowModal(false);
+        fetchProducts();
     };
 
-    const handleConfirmSale = async () => {
-        alert(`Venda registrada para ${lastClient}: ${cartQuantity}x ${selectedProduct?.name}`);
-        // In real app: Insert into sales table, decrement stock
-        setSelectedProduct(null);
+    const handleDelete = async (id: string, imageUrl: string | null) => {
+        if (!confirm("Tem certeza que quer excluir?")) return;
+        await supabase.from('products').delete().eq('id', id);
+        if (imageUrl) {
+            const path = imageUrl.split('/').pop();
+            if (path) await supabase.storage.from('products').remove([path]);
+        }
+        fetchProducts();
     };
 
-    const handleRestock = (product: Product, e: React.MouseEvent) => {
-        e.stopPropagation();
-        const msg = `Olá ${product.supplier}, preciso de reposição do ${product.name}. Qual o prazo?`;
-        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    const handleQuickDecrease = async (id: string, currentStock: number) => {
+        if (currentStock <= 0) return;
+        setProducts(prev => prev.map(p => p.id === id ? { ...p, stock: p.stock - 1 } : p));
+        await supabase.from('products').update({ stock: currentStock - 1 }).eq('id', id);
     };
 
     return (
-        <div className="min-h-screen bg-zinc-950 text-stone-200 font-sans selection:bg-[#d4af37]/30 flex relative overflow-hidden">
-            {/* Sidebar removed (Global) */}
-
-            <main className="flex-1 p-4 lg:p-8 relative overflow-y-auto h-screen scrollbar-hide flex flex-col">
-
-                {/* HEADER & TOGGLE */}
-                <div className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-md pb-4 pt-2 -mx-4 px-4 md:mx-0 md:px-0 md:pt-0 mb-8 border-b border-zinc-900 md:border-none">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
-                        <div>
-                            <h1 className="text-2xl md:text-4xl font-serif font-black text-white tracking-tighter drop-shadow-2xl mb-1">
-                                {viewMode === 'stock' ? 'ESTOQUE' : 'LOJA'} <span className="text-[#d4af37]">&</span> SUPPLY
-                            </h1>
-                            <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em]">Gestão de Produtos e Vendas</p>
-                        </div>
-
-                        <div className="bg-zinc-900 border border-zinc-800 p-1.5 rounded-full flex gap-1 relative z-20 w-full md:w-auto">
-                            <button
-                                onClick={() => setViewMode('stock')}
-                                className={`flex-1 md:flex-none px-6 py-4 md:py-3 rounded-full text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${viewMode === 'stock' ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'text-zinc-400 hover:text-white'}`}
-                            >
-                                <Package size={14} /> Estoque
-                            </button>
-                            <button
-                                onClick={() => setViewMode('shop')}
-                                className={`flex-1 md:flex-none px-6 py-4 md:py-3 rounded-full text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${viewMode === 'shop' ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'text-zinc-400 hover:text-white'}`}
-                            >
-                                <ShoppingCart size={14} /> Loja
-                            </button>
-                        </div>
-                    </div>
+        <div className="h-full bg-[#09090b] text-white p-6 pb-20 overflow-y-auto custom-scrollbar">
+            {/* HEADER E BUSCA */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
+                <div>
+                    <h1 className="text-3xl font-serif font-black uppercase tracking-tighter text-white">
+                        Estoque <span className="text-[#d4af37]">Produtos</span>
+                    </h1>
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-1">
+                        Gerencie suas vendas extras
+                    </p>
                 </div>
 
-                {/* CATEGORIES */}
-                <div className="flex gap-2 overflow-x-auto pb-4 mb-4 scrollbar-hide px-1">
-                    {['todos', 'cabelo', 'barba', 'rosto', 'acessorios'].map(cat => (
-                        <button
-                            key={cat}
-                            onClick={() => setSelectedCategory(cat)}
-                            className={`px-6 py-4 md:py-3 border rounded-xl text-[10px] font-bold uppercase tracking-widest whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-zinc-100 border-white text-black' : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-600'}`}
-                        >
-                            {cat}
-                        </button>
-                    ))}
-                </div>
-
-                {/* PRODUCT GRID */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 mb-12">
-                    <AnimatePresence mode='popLayout'>
-                        {filteredProducts.map(product => (
-                            <motion.div
-                                key={product.id}
-                                layout
-                                initial={{ opacity: 0, scale: 0.9 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.9 }}
-                                className={`
-                                    bg-zinc-900/60 backdrop-blur-md rounded-2xl p-4 border relative group overflow-hidden transition-all duration-300
-                                    ${product.stock < 3 ? 'border-red-500/30' : 'border-[#d4af37]/20'}
-                                    ${viewMode === 'shop' ? 'hover:-translate-y-2 hover:shadow-[0_10px_40px_-10px_rgba(212,175,55,0.2)]' : ''}
-                                `}
-                            >
-                                {/* Low Stock Pulse */}
-                                {product.stock < 3 && (
-                                    <div className="absolute inset-0 border-2 border-red-500/20 rounded-2xl animate-pulse pointer-events-none" />
-                                )}
-
-                                {/* Image & Badge */}
-                                <div className="relative h-48 rounded-xl overflow-hidden mb-4 bg-black">
-                                    <img src={product.image_url} alt={product.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" />
-                                    {product.stock < 3 && (
-                                        <div className="absolute top-2 right-2 bg-red-600/90 text-white text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-1 shadow-lg backdrop-blur-md">
-                                            <AlertTriangle size={10} /> REPOSIÇÃO
-                                        </div>
-                                    )}
-                                    {viewMode === 'stock' && product.stock >= 3 && (
-                                        <div className="absolute top-2 right-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-1 backdrop-blur-md">
-                                            <Check size={10} /> EM DIA
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Info */}
-                                <div className="flex justify-between items-start mb-2">
-                                    <div>
-                                        <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider mb-1">{product.category}</p>
-                                        <h3 className="text-white font-bold text-lg leading-tight">{product.name}</h3>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-[#d4af37] font-black text-xl">R$ {product.price.toFixed(2)}</p>
-                                        {viewMode === 'shop' && <p className="text-[10px] text-zinc-600 font-mono">Lucro: R$ {(product.price - product.cost).toFixed(2)}</p>}
-                                    </div>
-                                </div>
-
-                                {/* Mode Specific UI */}
-                                {viewMode === 'stock' ? (
-                                    <div className="mt-4 space-y-3">
-                                        <div className="flex justify-between text-xs text-zinc-400 mb-1">
-                                            <span>Estoque: <strong className={product.stock < 3 ? 'text-red-500' : 'text-white'}>{product.stock} un</strong></span>
-                                            <span>Mínimo: {product.min_stock}</span>
-                                        </div>
-                                        {/* Progress Bar */}
-                                        <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
-                                            <div
-                                                className={`h-full rounded-full transition-all duration-500 ${product.stock < 3 ? 'bg-red-500 w-[20%]' : 'bg-emerald-500 w-[80%]'}`}
-                                            />
-                                        </div>
-
-                                        {product.stock < 3 && (
-                                            <button
-                                                onClick={(e) => handleRestock(product, e)}
-                                                className="w-full mt-2 py-2 rounded-lg border border-zinc-700 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2"
-                                            >
-                                                <Truck size={14} /> Pedir Reposição
-                                            </button>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <button
-                                        onClick={() => handleSellClick(product)}
-                                        className="w-full mt-4 bg-[#d4af37] hover:bg-[#b08d55] text-black font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"
-                                    >
-                                        <ShoppingCart size={16} /> Vender
-                                    </button>
-                                )}
-                            </motion.div>
-                        ))}
-                    </AnimatePresence>
-                </div>
-
-                {/* SALES HISTORY FOOTER */}
-                <div className="mt-auto pt-6 border-t border-zinc-900">
-                    <div className="flex items-center gap-2 mb-4 text-zinc-500">
-                        <History size={14} />
-                        <span className="text-xs font-bold uppercase tracking-widest">Últimas Vendas</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                        {SALES_HISTORY.map(sale => (
-                            <div key={sale.id} className="bg-black/40 border border-zinc-800 p-3 rounded-lg flex flex-col">
-                                <span className="text-zinc-300 font-bold text-xs truncate">{sale.product}</span>
-                                <div className="flex justify-between items-center mt-1">
-                                    <span className="text-[#d4af37] font-mono text-xs">R$ {sale.value.toFixed(2)}</span>
-                                    <span className="text-[10px] text-zinc-600 bg-zinc-900 px-1.5 py-0.5 rounded capitalize">{sale.barber}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-            </main>
-
-            {/* POS DRAWER */}
-            <AnimatePresence>
-                {selectedProduct && (
-                    <>
-                        <motion.div
-                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            onClick={() => setSelectedProduct(null)}
-                            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40"
+                <div className="flex gap-2 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Buscar produto..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#d4af37] outline-none"
                         />
-                        <motion.div
-                            initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                            className="fixed right-0 top-0 bottom-0 w-full max-w-sm bg-zinc-950 border-l border-[#d4af37]/30 z-50 shadow-2xl flex flex-col"
-                        >
-                            <div className="p-6 border-b border-zinc-900 bg-zinc-900/50">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-xl font-serif font-black text-white">CHECKOUT</h2>
-                                    <button onClick={() => setSelectedProduct(null)} className="p-2 hover:bg-zinc-800 rounded-full transition-colors"><X size={20} className="text-zinc-500" /></button>
+                    </div>
+                    <button
+                        onClick={handleOpenCreate}
+                        className="bg-[#d4af37] text-black px-4 py-3 rounded-xl font-black uppercase flex items-center gap-2 hover:bg-[#b5952f] transition-all"
+                    >
+                        <Plus size={20} /> <span className="hidden md:inline">Novo</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* ABAS DE CATEGORIA */}
+            <div className="flex gap-2 overflow-x-auto pb-2 mb-6 custom-scrollbar">
+                {CATEGORIES.map(cat => (
+                    <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-all border ${selectedCategory === cat
+                                ? 'bg-zinc-800 text-[#d4af37] border-[#d4af37]/50'
+                                : 'bg-transparent text-zinc-500 border-transparent hover:bg-zinc-900'
+                            }`}
+                    >
+                        {cat}
+                    </button>
+                ))}
+            </div>
+
+            {/* GRID */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {loading ? <p className="text-zinc-500 animate-pulse">Carregando...</p> : filteredProducts.length === 0 ? (
+                    <div className="col-span-full flex flex-col items-center justify-center p-12 border border-zinc-800 border-dashed rounded-3xl text-zinc-600">
+                        <Package size={48} className="mb-4 opacity-50" />
+                        <p className="font-bold uppercase tracking-widest text-sm">Nenhum produto encontrado</p>
+                    </div>
+                ) : (
+                    filteredProducts.map(product => {
+                        const profit = product.price - (product.cost_price || 0);
+                        return (
+                            <motion.div
+                                layout
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                key={product.id}
+                                className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-2xl flex flex-col justify-between group hover:border-[#d4af37]/30 transition-all relative overflow-hidden"
+                            >
+                                {/* IMAGEM */}
+                                <div className="relative h-48 rounded-xl overflow-hidden mb-4 bg-black/50 flex items-center justify-center group-hover:shadow-lg transition-all">
+                                    {product.image_url ? (
+                                        <img src={product.image_url} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                    ) : (
+                                        <ShoppingBag size={40} className="text-zinc-700" />
+                                    )}
+
+                                    {product.stock <= 3 && (
+                                        <div className="absolute top-2 left-2 bg-red-500 text-white text-[9px] font-black px-2 py-1 rounded uppercase shadow-lg">
+                                            Acabando
+                                        </div>
+                                    )}
+
+                                    {/* OVERLAY ACTIONS */}
+                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300 flex justify-between items-end">
+                                        <button onClick={() => handleOpenEdit(product)} className="p-2 bg-zinc-800 hover:bg-white hover:text-black text-white rounded-lg transition-colors"><Edit size={16} /></button>
+                                        <button onClick={() => handleDelete(product.id, product.image_url)} className="p-2 bg-red-500/20 hover:bg-red-500 text-red-500 hover:text-white rounded-lg transition-colors"><Trash2 size={16} /></button>
+                                    </div>
                                 </div>
-                                <div className="flex gap-4">
-                                    <div className="w-20 h-20 rounded-xl bg-zinc-800 overflow-hidden shrink-0">
-                                        <img src={selectedProduct.image_url} className="w-full h-full object-cover" />
+
+                                {/* INFO */}
+                                <div>
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider bg-zinc-950 px-2 py-0.5 rounded">{product.category}</span>
+                                    </div>
+                                    <h3 className="text-lg font-black text-white uppercase tracking-tight truncate mb-2" title={product.name}>{product.name}</h3>
+
+                                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-800/50">
+                                        <div className="flex items-center gap-2 bg-black/40 px-2 py-1 rounded-lg border border-zinc-800">
+                                            <span className={`text-xs font-bold ${product.stock > 0 ? 'text-white' : 'text-red-500'}`}>{product.stock} un</span>
+                                            <button onClick={() => handleQuickDecrease(product.id, product.stock)} className="w-5 h-5 flex items-center justify-center bg-zinc-800 hover:bg-red-500 hover:text-white rounded text-zinc-400 transition-colors"><Minus size={10} /></button>
+                                        </div>
+
+                                        <div className="text-right">
+                                            <span className="block text-[#d4af37] font-serif font-black text-xl">
+                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.price)}
+                                            </span>
+                                            {/* MOSTRAR LUCRO */}
+                                            {product.cost_price > 0 && (
+                                                <span className="text-[10px] text-zinc-600 font-bold flex items-center justify-end gap-1">
+                                                    <TrendingUp size={10} /> Lucro: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(profit)}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        );
+                    })
+                )}
+            </div>
+
+            {/* MODAL (FORMULÁRIO) */}
+            <AnimatePresence>
+                {showModal && (
+                    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 w-full max-w-md shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+                            <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 text-zinc-500 hover:text-white"><X /></button>
+                            <h3 className="text-2xl font-serif font-black text-white italic mb-1">{editingId ? 'Editar Produto' : 'Novo Produto'}</h3>
+                            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-6">Preencha os detalhes</p>
+
+                            <div className="space-y-4">
+                                {/* FOTO */}
+                                <div className="flex justify-center">
+                                    <label className="cursor-pointer group relative w-full h-32 bg-black/30 border-2 border-dashed border-zinc-700 rounded-2xl flex flex-col items-center justify-center hover:border-[#d4af37] transition-colors overflow-hidden">
+                                        {uploading ? <Loader2 className="animate-spin text-[#d4af37]" /> : formData.image_url ? (
+                                            <img src={formData.image_url} className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
+                                        ) : (
+                                            <div className="text-center">
+                                                <Upload size={24} className="text-zinc-500 mb-2 mx-auto" />
+                                                <span className="text-zinc-500 text-xs font-bold uppercase">Enviar Foto</span>
+                                            </div>
+                                        )}
+                                        <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
+                                    </label>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-1">Nome</label>
+                                    <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full bg-black/50 border border-zinc-800 rounded-xl p-3 text-white font-bold outline-none focus:border-[#d4af37]" />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-1">Categoria</label>
+                                        <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full bg-black/50 border border-zinc-800 rounded-xl p-3 text-white font-bold outline-none focus:border-[#d4af37]">
+                                            {CATEGORIES.filter(c => c !== 'Todos').map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
                                     </div>
                                     <div>
-                                        <p className="text-zinc-500 text-xs font-bold uppercase">{selectedProduct.category}</p>
-                                        <h3 className="text-white font-bold text-lg leading-tight">{selectedProduct.name}</h3>
-                                        <p className="text-[#d4af37] font-black text-lg mt-1">R$ {selectedProduct.price.toFixed(2)}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="p-6 flex-1 space-y-6">
-                                {/* Client Auto-Select */}
-                                <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800">
-                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-2">Cliente (Agenda)</p>
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-[#d4af37]/20 text-[#d4af37] flex items-center justify-center font-bold text-xs"><User size={14} /></div>
-                                        <p className="text-white font-bold">{lastClient}</p>
-                                        <span className="ml-auto text-emerald-500 text-[10px] font-bold bg-emerald-950 px-2 py-1 rounded-full">CONFIRMADO</span>
+                                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-1">Estoque</label>
+                                        <input type="number" value={formData.stock} onChange={e => setFormData({ ...formData, stock: e.target.value })} className="w-full bg-black/50 border border-zinc-800 rounded-xl p-3 text-white font-bold outline-none focus:border-[#d4af37]" />
                                     </div>
                                 </div>
 
-                                {/* Quantity */}
-                                <div>
-                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-2">Quantidade</p>
-                                    <div className="flex items-center justify-between bg-zinc-900 rounded-xl p-2 border border-zinc-800">
-                                        <button onClick={() => setCartQuantity(Math.max(1, cartQuantity - 1))} className="w-10 h-10 rounded-lg bg-black hover:bg-zinc-800 text-zinc-400 flex items-center justify-center transition-colors"><Minus size={16} /></button>
-                                        <span className="text-xl font-black text-white">{cartQuantity}</span>
-                                        <button onClick={() => setCartQuantity(cartQuantity + 1)} className="w-10 h-10 rounded-lg bg-[#d4af37] text-black flex items-center justify-center hover:scale-105 transition-transform"><Plus size={16} /></button>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-black text-[#d4af37] uppercase tracking-widest block mb-1">Preço Venda</label>
+                                        <input type="number" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} className="w-full bg-black/50 border border-[#d4af37]/30 rounded-xl p-3 text-white font-bold outline-none focus:border-[#d4af37]" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-1">Preço Custo</label>
+                                        <input type="number" value={formData.cost_price} onChange={e => setFormData({ ...formData, cost_price: e.target.value })} className="w-full bg-black/50 border border-zinc-800 rounded-xl p-3 text-zinc-400 font-bold outline-none focus:border-[#d4af37]" placeholder="Opcional" />
                                     </div>
                                 </div>
 
-                                {/* Total */}
-                                <div className="mt-auto py-6 border-t border-zinc-900">
-                                    <div className="flex justify-between items-end mb-2">
-                                        <span className="text-zinc-500 text-sm">Total a pagar</span>
-                                        <span className="text-3xl font-black text-white">R$ {(selectedProduct.price * cartQuantity).toFixed(2)}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="p-6 pt-0">
-                                <button
-                                    onClick={handleConfirmSale}
-                                    className="w-full bg-gradient-to-r from-[#d4af37] to-[#b08d55] text-black font-black uppercase tracking-widest py-4 rounded-xl shadow-[0_0_30px_rgba(212,175,55,0.3)] hover:shadow-[0_0_50px_rgba(212,175,55,0.5)] transition-all active:scale-95 flex items-center justify-center gap-2"
-                                >
-                                    <DollarSign size={20} /> Confirmar Venda
+                                <button onClick={handleSave} disabled={uploading} className="w-full bg-[#d4af37] text-black font-black uppercase py-4 rounded-xl hover:bg-[#b5952f] mt-2 shadow-lg disabled:opacity-50">
+                                    {editingId ? 'Salvar Alterações' : 'Cadastrar Produto'}
                                 </button>
                             </div>
                         </motion.div>
-                    </>
+                    </div>
                 )}
             </AnimatePresence>
         </div>
